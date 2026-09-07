@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useUsers } from '@/features/users/queries'
-import { Table, Td, Th } from '@/components/ui/Table'
-import { Badge } from '@/components/ui/Badge'
-import { Spinner } from '@/components/ui/Spinner'
-import { Alert } from '@/components/ui/Alert'
+import { useUsers } from '@/modules/users/queries'
+import { Table, Td, Th } from '@/modules/global/components/Table'
+import { Badge } from '@/modules/global/components/Badge'
+import { Spinner } from '@/modules/global/components/Spinner'
+import { Alert } from '@/modules/global/components/Alert'
 
 function UsersPage() {
   const { data, isPending, isError } = useUsers()

@@ -3,8 +3,8 @@ import { useAuthStore } from '@/lib/auth/store'
 import { logout } from '@/lib/auth/service'
 import { usePermissions } from '@/lib/rbac/usePermissions'
 import { visibleNavItems } from '@/config/nav'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/modules/global/components/Button'
+import { Badge } from '@/modules/global/components/Badge'
 import { useConnectionStatus } from '@/lib/mqtt/connectionStore'
 
 export function AppShell() {

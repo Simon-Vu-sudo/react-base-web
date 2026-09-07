@@ -1,6 +1,6 @@
 import { Link, Outlet, createFileRoute, notFound } from '@tanstack/react-router'
 import { HttpError } from '@/lib/http/client'
-import { deviceQueryOptions } from '@/features/devices/queries'
+import { deviceQueryOptions } from '@/modules/devices/queries'
 
 export const Route = createFileRoute('/_auth/devices/$id')({
   // Loaders throw, so a failure becomes an error page rather than a broken

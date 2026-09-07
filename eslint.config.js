@@ -32,20 +32,23 @@ export default tseslint.config(
     },
   },
   {
-    // Scoped to src/features/** only: features must not reach into each
-    // other's internals (spec §5, "routes/ ... imports from features"). The
-    // route tree is the intended consumer of feature internals, so it is
-    // deliberately not covered by this rule.
-    files: ['src/features/**/*.{ts,tsx}'],
+    // Scoped to src/modules/** only: a module must not reach into another
+    // module's internals. The route tree is the intended consumer of module
+    // internals, so it is deliberately not covered by this rule.
+    //
+    // src/modules/global is the exception on the import side: it holds the
+    // shared components every module is meant to use, so importing FROM it is
+    // always allowed. The negation below carves it out.
+    files: ['src/modules/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@/features/*/*'],
+              group: ['@/modules/*/*', '!@/modules/global/**'],
               message:
-                'Do not import another feature’s internals. Promote shared code into src/lib.',
+                'Do not import another module’s internals. Use @/modules/global for shared components, or promote shared logic into src/lib.',
             },
           ],
         },

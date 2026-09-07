@@ -4,9 +4,9 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { HttpError } from '@/lib/http/client'
 import { login } from '@/lib/auth/service'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Alert } from '@/components/ui/Alert'
+import { Button } from '@/modules/global/components/Button'
+import { Input } from '@/modules/global/components/Input'
+import { Alert } from '@/modules/global/components/Alert'
 
 const schema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),

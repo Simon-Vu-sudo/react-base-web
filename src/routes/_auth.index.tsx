@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { TelemetryPanel } from '@/features/devices/components/TelemetryPanel'
+import { TelemetryPanel } from '@/modules/devices/components/TelemetryPanel'
 
 export const Route = createFileRoute('/_auth/')({
   component: () => (

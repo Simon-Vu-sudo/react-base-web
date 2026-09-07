@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { requireAuth } from '@/lib/rbac/guards'
-import { Button } from '@/components/ui/Button'
-import { AppShell } from '@/components/AppShell'
+import { Button } from '@/modules/global/components/Button'
+import { AppShell } from '@/modules/global/components/AppShell'
 
 /** Tier 1: keeps the shell so the user can navigate away from a failure. */
 function ShellError({ error }: { error: unknown }) {

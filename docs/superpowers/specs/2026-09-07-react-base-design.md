@@ -91,23 +91,27 @@ Anyone can edit a JS bundle or open a WebSocket by hand. The FE layers keep user
 ```
 src/
   app/                    providers, router construction, bootstrap, error boundary
-  routes/                 TanStack Router file-based tree (thin; imports from features)
-  lib/
-    rbac/                 permissions.ts, resolve.ts, can.ts, guards.ts, <Can>, usePermissions
-    auth/                 authStore, bootstrap, login/logout, me
+  routes/                 TanStack Router file-based tree (thin; imports from modules)
+  lib/                    cross-cutting infrastructure — the reusable core
+    rbac/                 permissions.ts, resolve.ts, predicates.ts, guards.ts, <Can>, usePermissions
+    auth/                 authStore, service (bootstrap/login/logout), safeRedirect
     http/                 apiFetch, refresh single-flight, csrf (opt-in)
-    mqtt/                 client, credentials, topics, useMqttSubscription, batcher
-  features/
-    devices/              api/ hooks/ store/ components/
-    users/
-  components/ui/          Tailwind primitives (Button, Input, Table, Modal, Spinner)
+    mqtt/                 topics, client, connectionStore, batcher, telemetryStore, useMqttSubscription
+  modules/                feature modules — each owns its api, queries, components
+    global/
+      components/         shared components: Tailwind primitives + AppShell
+    auth/                 LoginForm
+    devices/              api, queries, useDeviceEvents, components/
+    users/                api, queries
   config/                 nav manifest, env parsing
   test/                   setup, fetch stub helper, fake mqtt client, render helpers
 e2e/                      Playwright specs + fixtures
 docs/superpowers/specs/   this document
 ```
 
-Rule: `features/*` may import from `lib/`, `components/ui/`, and `config/`. Features must not import each other's internals — enforced by an ESLint `no-restricted-imports` pattern. Anything genuinely shared between features gets promoted into `lib/`.
+**Import rules.** A module may import from `lib/`, `config/`, and `modules/global/`. A module must **not** reach into another module's internals — enforced by an ESLint `no-restricted-imports` pattern scoped to `src/modules/**`, with `@/modules/global/**` carved out by negation since it exists precisely to be shared. The route tree is the intended consumer of module internals and is deliberately not covered by the rule. Anything genuinely shared between modules that is not a component gets promoted into `lib/`.
+
+`modules/global` is a module like any other, which is why its components live in `modules/global/components/` — the same shape as `modules/devices/components/`.
 
 ## 6. RBAC layer (`src/lib/rbac/`)
 
@@ -438,7 +442,7 @@ No MSW. Two hand-rolled doubles live in `src/test/`:
 - the login form shows a form-level (not field-level) error on 401
 - the login submit button is disabled while pending
 
-**Coverage:** v8 provider, with thresholds enforced on `src/lib/**` (the reusable core). Demo features under `src/features/**` are excluded from thresholds.
+**Coverage:** v8 provider, with thresholds enforced on `src/lib/**` (the reusable core). Demo features under `src/modules/**` are excluded from thresholds.
 
 ### 12.2 E2E (Playwright)
 
@@ -466,7 +470,7 @@ One workflow: lint → typecheck → unit tests with coverage → build → Play
 - Vite, React 19, TypeScript `strict`, path alias `@/* → src/*`
 - ESLint 9 flat config: typescript-eslint, react-hooks, jsx-a11y, import ordering, and a `no-restricted-imports` rule blocking cross-feature deep imports
 - Prettier; Husky pre-commit running lint-staged
-- Tailwind, with `components/ui/` primitives: Button, Input, Label, Table, Modal, Spinner, Badge
+- Tailwind, with `modules/global/components/` primitives: Button, Input, Label, Table, Modal, Spinner, Badge
 - `.env.example`: `VITE_API_URL` (defaults to the relative `/api` so the dev proxy keeps localhost same-origin; set to an absolute URL only for a cross-domain deployment), `VITE_MQTT_URL`, `VITE_ENABLE_CSRF`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
 - Vite dev proxy `/api` → BE, making localhost same-origin so `SameSite=Lax` cookies work in development
 - `docker-compose.yml` with Mosquitto (WebSocket listener enabled) for local development
@@ -504,4 +508,4 @@ Three roles — `admin`, `operator`, `viewer` — exercising `/login`, `/` (dash
 
 The devices list carries a row-level delete button wrapped in `<Can permission="device.delete">`. This is deliberate: it is the demo's only use of **element-level** gating, as distinct from the route-level gating everywhere else, and it is what makes `DEVICE_DELETE` a used permission rather than a dead declaration. `admin` sees the button; `operator` and `viewer` do not.
 
-Deleting `src/features/*`, the `_auth.devices.*` and `_auth.admin.*` routes, and the nav manifest entries leaves the reusable base intact.
+Deleting `src/modules/*`, the `_auth.devices.*` and `_auth.admin.*` routes, and the nav manifest entries leaves the reusable base intact.

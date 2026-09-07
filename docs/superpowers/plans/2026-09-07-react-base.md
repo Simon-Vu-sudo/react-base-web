@@ -4,7 +4,7 @@
 
 **Goal:** Build a reusable Vite + React 19 application base for internal IoT device-management front ends, with role-based permissions, nested route guards, HttpOnly-cookie auth, MQTT telemetry, and both unit and E2E test layers.
 
-**Architecture:** Feature-first layout — cross-cutting infrastructure lives in `src/lib` (`rbac`, `auth`, `http`, `mqtt`), demo domains in `src/features`, and a thin TanStack Router file-based tree in `src/routes` that imports from both. Permissions are resolved once at session bootstrap from roles the BE sends, into a `Set<Permission>` that guards, hooks, and components all read. Route guards compose by nesting through pathless layout routes, so a page is protected by virtue of where its file sits.
+**Architecture:** Feature-first layout — cross-cutting infrastructure lives in `src/lib` (`rbac`, `auth`, `http`, `mqtt`), demo domains in `src/modules`, and a thin TanStack Router file-based tree in `src/routes` that imports from both. Permissions are resolved once at session bootstrap from roles the BE sends, into a `Set<Permission>` that guards, hooks, and components all read. Route guards compose by nesting through pathless layout routes, so a page is protected by virtue of where its file sits.
 
 **Tech Stack:** Vite, React 19, TypeScript (strict), TanStack Router, TanStack Query, Zustand, MQTT.js, react-hook-form + zod, Tailwind, Vitest + React Testing Library, Playwright.
 
@@ -22,8 +22,8 @@ Every task's requirements implicitly include this section.
 - **`src/routeTree.gen.ts` is committed.** Never add it to `.gitignore`.
 - **The TanStack Router Vite plugin must be listed before `react()`** in the plugins array, or route generation and code splitting break.
 - **zod is pinned to `^3`.** zod v4 renames `z.string().email()` to `z.email()`; every schema in this plan uses the v3 form.
-- **Coverage thresholds apply to `src/lib/**` only.** `src/features/**` is demo code and is excluded.
-- **Tailwind only.** No component library. Primitives are hand-rolled in `src/components/ui`.
+- **Coverage thresholds apply to `src/lib/**` only.** `src/modules/**` is demo code and is excluded.
+- **Tailwind only.** No component library. Primitives are hand-rolled in `src/modules/global/components`.
 - **Commit after every task.** Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`).
 
 ---
@@ -55,7 +55,7 @@ Every task's requirements implicitly include this section.
 
 **Routes (`src/routes`) — thin; all logic imported.** Tree as laid out in spec §8.1.
 
-**Features (`src/features`) — deletable demo:** `features/devices/{api,hooks,components}`, `features/users/{api,hooks,components}`.
+**Features (`src/modules`) — deletable demo:** `modules/devices/{api,hooks,components}`, `modules/users/{api,hooks,components}`.
 
 **Test doubles (`src/test`):** `setup.ts`, `http.ts`, `fakeMqtt.ts`, `render.tsx`.
 
@@ -277,7 +277,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@/features/*/*'],
+              group: ['@/modules/*/*', '!@/modules/global/**'],
               message:
                 'Do not import another feature’s internals. Promote shared code into src/lib.',
             },
@@ -1961,8 +1961,8 @@ git commit -m "feat: add composable route guards for auth and permissions"
 ## Task 10: Tailwind UI primitives
 
 **Files:**
-- Create: `src/components/ui/Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Badge.tsx`, `Table.tsx`, `Alert.tsx`
-- Test: `src/components/ui/Button.test.tsx`, `src/components/ui/Input.test.tsx`
+- Create: `src/modules/global/components/Button.tsx`, `Input.tsx`, `Spinner.tsx`, `Badge.tsx`, `Table.tsx`, `Alert.tsx`
+- Test: `src/modules/global/components/Button.test.tsx`, `src/modules/global/components/Input.test.tsx`
 
 **Interfaces:**
 - Consumes: nothing
@@ -1976,7 +1976,7 @@ Only `Button` and `Input` carry behaviour worth testing; the rest are styling sh
 - [ ] **Step 1: Write the failing tests**
 
 ```tsx
-// src/components/ui/Button.test.tsx
+// src/modules/global/components/Button.test.tsx
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -2016,7 +2016,7 @@ describe('<Button>', () => {
 ```
 
 ```tsx
-// src/components/ui/Input.test.tsx
+// src/modules/global/components/Input.test.tsx
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Input } from './Input'
@@ -2046,13 +2046,13 @@ describe('<Input>', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npx vitest run src/components/ui`
+Run: `npx vitest run src/modules/global/components`
 Expected: FAIL — cannot resolve `./Button` and `./Input`
 
 - [ ] **Step 3: Write Button and Input**
 
 ```tsx
-// src/components/ui/Button.tsx
+// src/modules/global/components/Button.tsx
 import type { ButtonHTMLAttributes } from 'react'
 import { Spinner } from './Spinner'
 
@@ -2093,7 +2093,7 @@ export function Button({
 ```
 
 ```tsx
-// src/components/ui/Input.tsx
+// src/modules/global/components/Input.tsx
 import { forwardRef, useId, type InputHTMLAttributes } from 'react'
 
 type Props = InputHTMLAttributes<HTMLInputElement> & {
@@ -2137,7 +2137,7 @@ export const Input = forwardRef<HTMLInputElement, Props>(function Input(
 - [ ] **Step 4: Write the remaining presentational primitives**
 
 ```tsx
-// src/components/ui/Spinner.tsx
+// src/modules/global/components/Spinner.tsx
 export function Spinner() {
   return (
     <span
@@ -2150,7 +2150,7 @@ export function Spinner() {
 ```
 
 ```tsx
-// src/components/ui/Badge.tsx
+// src/modules/global/components/Badge.tsx
 type Tone = 'ok' | 'warn' | 'error' | 'neutral'
 
 const TONES: Record<Tone, string> = {
@@ -2168,7 +2168,7 @@ export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: R
 ```
 
 ```tsx
-// src/components/ui/Table.tsx
+// src/modules/global/components/Table.tsx
 import type { ReactNode } from 'react'
 
 export function Table({ children }: { children: ReactNode }) {
@@ -2193,7 +2193,7 @@ export function Td({ children }: { children: ReactNode }) {
 ```
 
 ```tsx
-// src/components/ui/Alert.tsx
+// src/modules/global/components/Alert.tsx
 import type { ReactNode } from 'react'
 
 const TONES = {
@@ -2218,13 +2218,13 @@ export function Alert({
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `npx vitest run src/components/ui`
+Run: `npx vitest run src/modules/global/components`
 Expected: PASS (7 tests)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/components/ui
+git add src/modules/global/components
 git commit -m "feat: add Tailwind UI primitives"
 ```
 
@@ -2341,7 +2341,7 @@ export const queryClient = new QueryClient({
 import { Outlet, createRootRouteWithContext, useRouter } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import type { RouterAuthSnapshot } from '@/lib/rbac/guards'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 
 export type RouterContext = {
   getAuth: () => RouterAuthSnapshot
@@ -2404,7 +2404,7 @@ export const Route = createFileRoute('/_public')({
 // src/routes/_auth.tsx
 import { Outlet, createFileRoute, useRouter } from '@tanstack/react-router'
 import { requireAuth } from '@/lib/rbac/guards'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 
 /** Tier 1: keeps the shell so the user can navigate away from a failure. */
 function ShellError({ error }: { error: Error }) {
@@ -2560,7 +2560,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/lib/auth/store'
 import { bootstrap } from '@/lib/auth/service'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 import { queryClient } from './queryClient'
 import { router } from './router'
 
@@ -2906,7 +2906,7 @@ import { useAuthStore } from '@/lib/auth/store'
 import { logout } from '@/lib/auth/service'
 import { usePermissions } from '@/lib/rbac/usePermissions'
 import { visibleNavItems } from '@/config/nav'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 
 export function AppShell() {
   const { can } = usePermissions()
@@ -2978,8 +2978,8 @@ git commit -m "feat: add permission-filtered navigation and app shell"
 
 **Files:**
 - Modify: `src/routes/_public.login.tsx`
-- Create: `src/features/auth/LoginForm.tsx`
-- Test: `src/features/auth/LoginForm.test.tsx`
+- Create: `src/modules/auth/LoginForm.tsx`
+- Test: `src/modules/auth/LoginForm.test.tsx`
 
 **Interfaces:**
 - Consumes: `login` (Task 7), `HttpError` (Task 5), `Input`/`Button`/`Alert` (Task 10), `safeRedirect` (Task 11)
@@ -2990,7 +2990,7 @@ Split from the route so the form is testable without mounting the router.
 - [ ] **Step 1: Write the failing test**
 
 ```tsx
-// src/features/auth/LoginForm.test.tsx
+// src/modules/auth/LoginForm.test.tsx
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -3097,22 +3097,22 @@ Note the sixth test registers no route for `/api/auth/login`, so the fetch stub 
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/features/auth/LoginForm.test.tsx`
+Run: `npx vitest run src/modules/auth/LoginForm.test.tsx`
 Expected: FAIL — cannot resolve `./LoginForm`
 
 - [ ] **Step 3: Write LoginForm**
 
 ```tsx
-// src/features/auth/LoginForm.tsx
+// src/modules/auth/LoginForm.tsx
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { HttpError } from '@/lib/http/client'
 import { login } from '@/lib/auth/service'
-import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { Alert } from '@/components/ui/Alert'
+import { Button } from '@/modules/global/components/Button'
+import { Input } from '@/modules/global/components/Input'
+import { Alert } from '@/modules/global/components/Alert'
 
 const schema = z.object({
   email: z.string().min(1, 'Email is required').email('Enter a valid email address'),
@@ -3182,7 +3182,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/features/auth/LoginForm.test.tsx`
+Run: `npx vitest run src/modules/auth/LoginForm.test.tsx`
 Expected: PASS (8 tests)
 
 - [ ] **Step 5: Mount the form in the route**
@@ -3191,7 +3191,7 @@ Expected: PASS (8 tests)
 // src/routes/_public.login.tsx
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { safeRedirect } from '@/lib/auth/safeRedirect'
-import { LoginForm } from '@/features/auth/LoginForm'
+import { LoginForm } from '@/modules/auth/LoginForm'
 
 function LoginPage() {
   const { redirect } = Route.useSearch()
@@ -4676,10 +4676,10 @@ git commit -m "feat: add rAF-batched telemetry store and subscription hook"
 ## Task 17: Devices feature and nested sub-routes
 
 **Files:**
-- Create: `src/features/devices/api.ts`, `src/features/devices/queries.ts`, `src/features/devices/components/DeviceTable.tsx`, `src/features/devices/useDeviceEvents.ts`
+- Create: `src/modules/devices/api.ts`, `src/modules/devices/queries.ts`, `src/modules/devices/components/DeviceTable.tsx`, `src/modules/devices/useDeviceEvents.ts`
 - Create: `src/routes/_auth.devices.tsx`, `src/routes/_auth.devices.index.tsx`, `src/routes/_auth.devices.$id.tsx`, `src/routes/_auth.devices.$id.index.tsx`, `src/routes/_auth.devices.$id.settings.tsx`
 - Modify: `src/app/routing.test.tsx` (un-skip the redirect-bounce test)
-- Test: `src/features/devices/devices.test.tsx`
+- Test: `src/modules/devices/devices.test.tsx`
 
 **Interfaces:**
 - Consumes: `apiFetch`/`HttpError` (Task 5), `requirePermission` (Task 9), `Can` (Task 8), UI primitives (Task 10), `subscribeTopic`/`deviceEventSchema` (Tasks 14–15), `renderRoute`/`signIn` (Task 11)
@@ -4696,7 +4696,7 @@ The demo slice that proves the whole design: nested guards, a loader that throws
 - [ ] **Step 1: Write the API and query layer**
 
 ```ts
-// src/features/devices/api.ts
+// src/modules/devices/api.ts
 import { apiFetch } from '@/lib/http/client'
 
 export type Device = {
@@ -4715,7 +4715,7 @@ export const deleteDevice = (id: string) =>
 ```
 
 ```ts
-// src/features/devices/queries.ts
+// src/modules/devices/queries.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { deleteDevice, getDevice, listDevices, updateDevice, type Device } from './api'
 
@@ -4762,7 +4762,7 @@ export function useDeleteDevice() {
 The one place MQTT is allowed to touch the Query cache — because a registration or deletion is a statement about REST data, not a reading.
 
 ```ts
-// src/features/devices/useDeviceEvents.ts
+// src/modules/devices/useDeviceEvents.ts
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMqttSubscription } from '@/lib/mqtt/useMqttSubscription'
@@ -4795,13 +4795,13 @@ export function useDeviceEvents(): void {
 - [ ] **Step 3: Write the device table**
 
 ```tsx
-// src/features/devices/components/DeviceTable.tsx
+// src/modules/devices/components/DeviceTable.tsx
 import { Link } from '@tanstack/react-router'
 import { Can } from '@/lib/rbac/Can'
 import { PERMISSIONS } from '@/lib/rbac/permissions'
-import { Table, Td, Th } from '@/components/ui/Table'
-import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import { Table, Td, Th } from '@/modules/global/components/Table'
+import { Button } from '@/modules/global/components/Button'
+import { Badge } from '@/modules/global/components/Badge'
 import { useTelemetryStore } from '@/lib/mqtt/telemetryStore'
 import type { Device } from '../api'
 import { useDeleteDevice } from '../queries'
@@ -4872,11 +4872,11 @@ export const Route = createFileRoute('/_auth/devices')({
 ```tsx
 // src/routes/_auth.devices.index.tsx
 import { createFileRoute } from '@tanstack/react-router'
-import { useDevices } from '@/features/devices/queries'
-import { useDeviceEvents } from '@/features/devices/useDeviceEvents'
-import { DeviceTable } from '@/features/devices/components/DeviceTable'
-import { Spinner } from '@/components/ui/Spinner'
-import { Alert } from '@/components/ui/Alert'
+import { useDevices } from '@/modules/devices/queries'
+import { useDeviceEvents } from '@/modules/devices/useDeviceEvents'
+import { DeviceTable } from '@/modules/devices/components/DeviceTable'
+import { Spinner } from '@/modules/global/components/Spinner'
+import { Alert } from '@/modules/global/components/Alert'
 
 function DevicesPage() {
   const { data, isPending, isError } = useDevices()
@@ -4905,7 +4905,7 @@ export const Route = createFileRoute('/_auth/devices/')({
 // src/routes/_auth.devices.$id.tsx
 import { Link, Outlet, createFileRoute, notFound } from '@tanstack/react-router'
 import { HttpError } from '@/lib/http/client'
-import { deviceQueryOptions } from '@/features/devices/queries'
+import { deviceQueryOptions } from '@/modules/devices/queries'
 
 export const Route = createFileRoute('/_auth/devices/$id')({
   // Loaders throw, so a failure becomes an error page rather than a broken
@@ -4991,10 +4991,10 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { requirePermission } from '@/lib/rbac/guards'
 import { PERMISSIONS } from '@/lib/rbac/permissions'
-import { useUpdateDevice } from '@/features/devices/queries'
-import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
-import { Alert } from '@/components/ui/Alert'
+import { useUpdateDevice } from '@/modules/devices/queries'
+import { Input } from '@/modules/global/components/Input'
+import { Button } from '@/modules/global/components/Button'
+import { Alert } from '@/modules/global/components/Alert'
 import { Route as DetailRoute } from './_auth.devices.$id'
 
 const schema = z.object({
@@ -5044,7 +5044,7 @@ export const Route = createFileRoute('/_auth/devices/$id/settings')({
 - [ ] **Step 5: Write the failing feature test**
 
 ```tsx
-// src/features/devices/devices.test.tsx
+// src/modules/devices/devices.test.tsx
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { installFetchMock, mockRoute, resetFetchMock } from '@/test/http'
@@ -5138,12 +5138,12 @@ The last test is the one that proves spec §8.2 — the guard runs before the lo
 
 - [ ] **Step 6: Run test to verify it fails, then passes**
 
-Run: `npx vitest run src/features/devices/devices.test.tsx`
+Run: `npx vitest run src/modules/devices/devices.test.tsx`
 Expected: FAIL first (routes not generated), then after `npx tsr generate`, PASS (9 tests).
 
 ```bash
 npx tsr generate || npm run build
-npx vitest run src/features/devices/devices.test.tsx
+npx vitest run src/modules/devices/devices.test.tsx
 ```
 
 - [ ] **Step 7: Un-skip the redirect-bounce test**
@@ -5179,10 +5179,10 @@ git commit -m "feat: add devices feature with nested guarded sub-routes"
 ## Task 18: Admin users, dashboard telemetry and connection badge
 
 **Files:**
-- Create: `src/features/users/api.ts`, `src/features/users/queries.ts`, `src/features/devices/components/TelemetryPanel.tsx`
+- Create: `src/modules/users/api.ts`, `src/modules/users/queries.ts`, `src/modules/devices/components/TelemetryPanel.tsx`
 - Create: `src/routes/_auth.admin.tsx`, `src/routes/_auth.admin.users.tsx`
 - Modify: `src/routes/_auth.index.tsx` (mount the telemetry panel), `src/components/AppShell.tsx` (connection badge)
-- Test: `src/features/users/users.test.tsx`, `src/features/devices/TelemetryPanel.test.tsx`
+- Test: `src/modules/users/users.test.tsx`, `src/modules/devices/TelemetryPanel.test.tsx`
 
 **Interfaces:**
 - Consumes: `apiFetch` (Task 5), `requirePermission` (Task 9), `useMqttSubscription`/`pushTelemetry`/`createBatcher`/`useConnectionStatus` (Tasks 15–16)
@@ -5197,7 +5197,7 @@ Closes out the demo slice and puts the batcher on screen.
 - [ ] **Step 1: Write the users API, queries and routes**
 
 ```ts
-// src/features/users/api.ts
+// src/modules/users/api.ts
 import { apiFetch } from '@/lib/http/client'
 
 export type AppUser = {
@@ -5211,7 +5211,7 @@ export const listUsers = () => apiFetch<AppUser[]>('/users')
 ```
 
 ```ts
-// src/features/users/queries.ts
+// src/modules/users/queries.ts
 import { useQuery } from '@tanstack/react-query'
 import { listUsers } from './api'
 
@@ -5235,11 +5235,11 @@ export const Route = createFileRoute('/_auth/admin')({
 ```tsx
 // src/routes/_auth.admin.users.tsx
 import { createFileRoute } from '@tanstack/react-router'
-import { useUsers } from '@/features/users/queries'
-import { Table, Td, Th } from '@/components/ui/Table'
-import { Badge } from '@/components/ui/Badge'
-import { Spinner } from '@/components/ui/Spinner'
-import { Alert } from '@/components/ui/Alert'
+import { useUsers } from '@/modules/users/queries'
+import { Table, Td, Th } from '@/modules/global/components/Table'
+import { Badge } from '@/modules/global/components/Badge'
+import { Spinner } from '@/modules/global/components/Spinner'
+import { Alert } from '@/modules/global/components/Alert'
 
 function UsersPage() {
   const { data, isPending, isError } = useUsers()
@@ -5291,14 +5291,14 @@ export const Route = createFileRoute('/_auth/admin/users')({
 The batcher is created once per mount and disposed on unmount, so a burst of readings commits once per frame rather than once per message.
 
 ```tsx
-// src/features/devices/components/TelemetryPanel.tsx
+// src/modules/devices/components/TelemetryPanel.tsx
 import { useCallback, useEffect, useMemo } from 'react'
 import { createBatcher } from '@/lib/mqtt/batcher'
 import { pushTelemetryBatch, useTelemetryStore } from '@/lib/mqtt/telemetryStore'
 import { useMqttSubscription } from '@/lib/mqtt/useMqttSubscription'
 import { TOPICS, parsePayload, statusSchema, telemetrySchema, type Telemetry } from '@/lib/mqtt/topics'
 import { setOnline } from '@/lib/mqtt/telemetryStore'
-import { Table, Td, Th } from '@/components/ui/Table'
+import { Table, Td, Th } from '@/modules/global/components/Table'
 
 export function TelemetryPanel() {
   const batcher = useMemo(() => createBatcher<Telemetry>(pushTelemetryBatch), [])
@@ -5356,7 +5356,7 @@ export function TelemetryPanel() {
 ```tsx
 // src/routes/_auth.index.tsx
 import { createFileRoute } from '@tanstack/react-router'
-import { TelemetryPanel } from '@/features/devices/components/TelemetryPanel'
+import { TelemetryPanel } from '@/modules/devices/components/TelemetryPanel'
 
 export const Route = createFileRoute('/_auth/')({
   component: () => (
@@ -5374,7 +5374,7 @@ In `src/components/AppShell.tsx`, add the import and render it in the header bef
 
 ```tsx
 import { useConnectionStatus } from '@/lib/mqtt/connectionStore'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/modules/global/components/Badge'
 
 // inside AppShell():
 const connection = useConnectionStatus()
@@ -5388,7 +5388,7 @@ const connection = useConnectionStatus()
 - [ ] **Step 5: Write the failing tests**
 
 ```tsx
-// src/features/users/users.test.tsx
+// src/modules/users/users.test.tsx
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { installFetchMock, mockRoute, resetFetchMock } from '@/test/http'
@@ -5435,7 +5435,7 @@ describe('/admin/users', () => {
 ```
 
 ```tsx
-// src/features/devices/TelemetryPanel.test.tsx
+// src/modules/devices/TelemetryPanel.test.tsx
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { installFetchMock, mockRoute, resetFetchMock } from '@/test/http'
@@ -5518,7 +5518,7 @@ The third test is the batcher's behaviour observed from the outside: twenty mess
 
 ```bash
 npx tsr generate || npm run build
-npx vitest run src/features
+npx vitest run src/modules
 ```
 
 Expected: PASS (16 tests across devices, users, telemetry)
@@ -6062,7 +6062,7 @@ CORS with an explicit origin, and `VITE_ENABLE_CSRF=true`.
 ## Removing the demo
 
 ```bash
-rm -rf src/features/devices src/features/users
+rm -rf src/modules/devices src/modules/users
 rm src/routes/_auth.devices.* src/routes/_auth.admin.*
 ```
 

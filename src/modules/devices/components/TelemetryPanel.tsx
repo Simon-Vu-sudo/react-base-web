@@ -3,7 +3,7 @@ import { createBatcher } from '@/lib/mqtt/batcher'
 import { pushTelemetryBatch, setOnline, useTelemetryStore } from '@/lib/mqtt/telemetryStore'
 import { useMqttSubscription } from '@/lib/mqtt/useMqttSubscription'
 import { TOPICS, parsePayload, statusSchema, telemetrySchema, type Telemetry } from '@/lib/mqtt/topics'
-import { Table, Td, Th } from '@/components/ui/Table'
+import { Table, Td, Th } from '@/modules/global/components/Table'
 
 /**
  * The batcher is created once per mount and disposed on unmount, so a burst

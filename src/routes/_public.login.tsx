@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { safeRedirect } from '@/lib/auth/safeRedirect'
-import { LoginForm } from '@/features/auth/LoginForm'
+import { LoginForm } from '@/modules/auth/LoginForm'
 
 function LoginPage() {
   const { redirect } = Route.useSearch()

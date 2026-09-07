@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useDevices } from '@/features/devices/queries'
-import { useDeviceEvents } from '@/features/devices/useDeviceEvents'
-import { DeviceTable } from '@/features/devices/components/DeviceTable'
-import { Spinner } from '@/components/ui/Spinner'
-import { Alert } from '@/components/ui/Alert'
+import { useDevices } from '@/modules/devices/queries'
+import { useDeviceEvents } from '@/modules/devices/useDeviceEvents'
+import { DeviceTable } from '@/modules/devices/components/DeviceTable'
+import { Spinner } from '@/modules/global/components/Spinner'
+import { Alert } from '@/modules/global/components/Alert'
 
 function DevicesPage() {
   const { data, isPending, isError } = useDevices()

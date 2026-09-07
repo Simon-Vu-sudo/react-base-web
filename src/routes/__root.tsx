@@ -1,7 +1,7 @@
 import { Outlet, createRootRouteWithContext, useRouter } from '@tanstack/react-router'
 import type { QueryClient } from '@tanstack/react-query'
 import type { RouterAuthSnapshot } from '@/lib/rbac/guards'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 
 export type RouterContext = {
   getAuth: () => RouterAuthSnapshot

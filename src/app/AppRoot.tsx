@@ -2,7 +2,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/lib/auth/store'
 import { bootstrap } from '@/lib/auth/service'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/modules/global/components/Button'
 import { queryClient } from './queryClient'
 import { router } from './router'
 
