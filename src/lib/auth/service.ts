@@ -14,6 +14,13 @@ export function registerLogoutHandler(fn: () => void | Promise<void>): void {
 }
 
 /**
+ * Clears all registered logout handlers. For testing only.
+ */
+export function clearLogoutHandlers(): void {
+  logoutHandlers.length = 0
+}
+
+/**
  * Resolves the session before the router mounts. Has three outcomes, and the
  * third matters: a BE outage must not be reported as "logged out", or every
  * user gets bounced to a login page that cannot work either.

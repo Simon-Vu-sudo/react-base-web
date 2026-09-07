@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installFetchMock, mockNetworkError, mockRoute, resetFetchMock } from '@/test/http'
 import { PERMISSIONS } from '@/lib/rbac/permissions'
 import { authStore } from './store'
-import { bootstrap, login, logout, registerLogoutHandler, resyncSession } from './service'
+import { bootstrap, login, logout, registerLogoutHandler, resyncSession, clearLogoutHandlers } from './service'
 
 const user = { id: 'u1', email: 'a@b.co', name: 'Ann', roles: ['admin'] }
 
@@ -10,7 +10,10 @@ beforeEach(() => {
   installFetchMock()
   authStore.setState({ status: 'loading', user: null, permissions: new Set() })
 })
-afterEach(() => resetFetchMock())
+afterEach(() => {
+  resetFetchMock()
+  clearLogoutHandlers()
+})
 
 describe('bootstrap', () => {
   it('authenticates on 200 and resolves permissions', async () => {
