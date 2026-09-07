@@ -111,6 +111,31 @@ describe('apiFetch refresh behaviour', () => {
     expect(callCount('GET', '/api/me/settings')).toBe(2)
   })
 
+  it('sends the refresh token in the refresh request body, and replays with the new access token', async () => {
+    let n = 0
+    mockRoute('GET', '/api/me/settings', () => {
+      n += 1
+      return n === 1
+        ? new Response(null, { status: 401 })
+        : new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          })
+    })
+    mockRoute('POST', '/api/auth/refresh', {
+      body: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+    })
+
+    await apiFetch('/me/settings')
+
+    const refreshInit = lastInit('POST', '/api/auth/refresh')
+    expect(JSON.parse(String(refreshInit?.body))).toEqual({ refreshToken: 'refresh-1' })
+
+    const replayInit = lastInit('GET', '/api/me/settings')
+    expect(new Headers(replayInit?.headers).get('authorization')).toBe('Bearer access-2')
+    expect(getAccessToken()).toBe('access-2')
+  })
+
   it('does not retry a second time when the replay also 401s', async () => {
     mockRoute('GET', '/api/devices', { status: 401 })
     mockRoute('POST', '/api/auth/refresh', {
@@ -140,7 +165,16 @@ describe('apiFetch refresh behaviour', () => {
     await expect(apiFetch('/devices')).rejects.toMatchObject({ status: 401 })
     expect(onRefreshFailed).toHaveBeenCalledTimes(1)
     expect(callCount('GET', '/api/devices')).toBe(1)
+    expect(getAccessToken()).toBeNull()
     setHttpHooks({ onRefreshFailed: () => {} })
+  })
+
+  it('does not attempt a refresh call when there is no refresh token to send', async () => {
+    clearTokens()
+    mockRoute('GET', '/api/devices', { status: 401 })
+
+    await expect(apiFetch('/devices')).rejects.toMatchObject({ status: 401 })
+    expect(callCount('POST', '/api/auth/refresh')).toBe(0)
   })
 
   it('allows a fresh refresh after an earlier one settled', async () => {
