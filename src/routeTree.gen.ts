@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AuthIndexRouteImport } from './routes/_auth.index'
+import { Route as AuthAdminRouteImport } from './routes/_auth.admin'
 import { Route as AuthDevicesRouteImport } from './routes/_auth.devices'
 import { Route as AuthForbiddenRouteImport } from './routes/_auth.forbidden'
 import { Route as PublicLoginRouteImport } from './routes/_public.login'
+import { Route as AuthAdminUsersRouteImport } from './routes/_auth.admin.users'
 import { Route as AuthDevicesIndexRouteImport } from './routes/_auth.devices.index'
 import { Route as AuthDevicesIdRouteImport } from './routes/_auth.devices.$id'
 import { Route as AuthDevicesIdIndexRouteImport } from './routes/_auth.devices.$id.index'
@@ -33,6 +35,11 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthAdminRoute = AuthAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthDevicesRoute = AuthDevicesRouteImport.update({
   id: '/devices',
   path: '/devices',
@@ -47,6 +54,11 @@ const PublicLoginRoute = PublicLoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => PublicRoute,
+} as any)
+const AuthAdminUsersRoute = AuthAdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AuthAdminRoute,
 } as any)
 const AuthDevicesIndexRoute = AuthDevicesIndexRouteImport.update({
   id: '/',
@@ -71,9 +83,11 @@ const AuthDevicesIdSettingsRoute = AuthDevicesIdSettingsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
+  '/admin': typeof AuthAdminRouteWithChildren
   '/devices': typeof AuthDevicesRouteWithChildren
   '/forbidden': typeof AuthForbiddenRoute
   '/login': typeof PublicLoginRoute
+  '/admin/users': typeof AuthAdminUsersRoute
   '/devices/$id': typeof AuthDevicesIdRouteWithChildren
   '/devices/': typeof AuthDevicesIndexRoute
   '/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
@@ -81,8 +95,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof AuthIndexRoute
+  '/admin': typeof AuthAdminRouteWithChildren
   '/forbidden': typeof AuthForbiddenRoute
   '/login': typeof PublicLoginRoute
+  '/admin/users': typeof AuthAdminUsersRoute
   '/devices': typeof AuthDevicesIndexRoute
   '/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
   '/devices/$id': typeof AuthDevicesIdIndexRoute
@@ -91,10 +107,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
+  '/_auth/admin': typeof AuthAdminRouteWithChildren
   '/_auth/devices': typeof AuthDevicesRouteWithChildren
   '/_auth/forbidden': typeof AuthForbiddenRoute
   '/_public/login': typeof PublicLoginRoute
   '/_auth/': typeof AuthIndexRoute
+  '/_auth/admin/users': typeof AuthAdminUsersRoute
   '/_auth/devices/$id': typeof AuthDevicesIdRouteWithChildren
   '/_auth/devices/': typeof AuthDevicesIndexRoute
   '/_auth/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
@@ -104,9 +122,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
     | '/devices'
     | '/forbidden'
     | '/login'
+    | '/admin/users'
     | '/devices/$id'
     | '/devices/'
     | '/devices/$id/settings'
@@ -114,8 +134,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
     | '/forbidden'
     | '/login'
+    | '/admin/users'
     | '/devices'
     | '/devices/$id/settings'
     | '/devices/$id'
@@ -123,10 +145,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_auth'
     | '/_public'
+    | '/_auth/admin'
     | '/_auth/devices'
     | '/_auth/forbidden'
     | '/_public/login'
     | '/_auth/'
+    | '/_auth/admin/users'
     | '/_auth/devices/$id'
     | '/_auth/devices/'
     | '/_auth/devices/$id/settings'
@@ -161,6 +185,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/admin': {
+      id: '/_auth/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthAdminRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/devices': {
       id: '/_auth/devices'
       path: '/devices'
@@ -181,6 +212,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof PublicLoginRouteImport
       parentRoute: typeof PublicRoute
+    }
+    '/_auth/admin/users': {
+      id: '/_auth/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthAdminUsersRouteImport
+      parentRoute: typeof AuthAdminRoute
     }
     '/_auth/devices/': {
       id: '/_auth/devices/'
@@ -213,6 +251,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AuthAdminRouteChildren {
+  AuthAdminUsersRoute: typeof AuthAdminUsersRoute
+}
+
+const AuthAdminRouteChildren: AuthAdminRouteChildren = {
+  AuthAdminUsersRoute: AuthAdminUsersRoute,
+}
+
+const AuthAdminRouteWithChildren = AuthAdminRoute._addFileChildren(
+  AuthAdminRouteChildren,
+)
+
 interface AuthDevicesIdRouteChildren {
   AuthDevicesIdSettingsRoute: typeof AuthDevicesIdSettingsRoute
   AuthDevicesIdIndexRoute: typeof AuthDevicesIdIndexRoute
@@ -242,12 +292,14 @@ const AuthDevicesRouteWithChildren = AuthDevicesRoute._addFileChildren(
 )
 
 interface AuthRouteChildren {
+  AuthAdminRoute: typeof AuthAdminRouteWithChildren
   AuthDevicesRoute: typeof AuthDevicesRouteWithChildren
   AuthForbiddenRoute: typeof AuthForbiddenRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthAdminRoute: AuthAdminRouteWithChildren,
   AuthDevicesRoute: AuthDevicesRouteWithChildren,
   AuthForbiddenRoute: AuthForbiddenRoute,
   AuthIndexRoute: AuthIndexRoute,

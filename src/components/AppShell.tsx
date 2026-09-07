@@ -4,11 +4,14 @@ import { logout } from '@/lib/auth/service'
 import { usePermissions } from '@/lib/rbac/usePermissions'
 import { visibleNavItems } from '@/config/nav'
 import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { useConnectionStatus } from '@/lib/mqtt/connectionStore'
 
 export function AppShell() {
   const { can } = usePermissions()
   const user = useAuthStore((s) => s.user)
   const items = visibleNavItems(can)
+  const connection = useConnectionStatus()
 
   return (
     <div className="grid min-h-screen grid-cols-[220px_1fr]">
@@ -30,7 +33,12 @@ export function AppShell() {
       </nav>
       <div className="flex flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
-          <span className="text-sm font-medium text-slate-700">{user?.name}</span>
+          <div className="flex items-center gap-3">
+            <Badge tone={connection === 'online' ? 'ok' : connection === 'connecting' ? 'warn' : 'error'}>
+              {connection}
+            </Badge>
+            <span className="text-sm font-medium text-slate-700">{user?.name}</span>
+          </div>
           <Button variant="secondary" onClick={() => void logout()}>
             Sign out
           </Button>
