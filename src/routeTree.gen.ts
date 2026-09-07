@@ -12,8 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as PublicRouteImport } from './routes/_public'
 import { Route as AuthIndexRouteImport } from './routes/_auth.index'
+import { Route as AuthDevicesRouteImport } from './routes/_auth.devices'
 import { Route as AuthForbiddenRouteImport } from './routes/_auth.forbidden'
 import { Route as PublicLoginRouteImport } from './routes/_public.login'
+import { Route as AuthDevicesIndexRouteImport } from './routes/_auth.devices.index'
+import { Route as AuthDevicesIdRouteImport } from './routes/_auth.devices.$id'
+import { Route as AuthDevicesIdIndexRouteImport } from './routes/_auth.devices.$id.index'
+import { Route as AuthDevicesIdSettingsRouteImport } from './routes/_auth.devices.$id.settings'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/_auth',
@@ -28,6 +33,11 @@ const AuthIndexRoute = AuthIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthDevicesRoute = AuthDevicesRouteImport.update({
+  id: '/devices',
+  path: '/devices',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthForbiddenRoute = AuthForbiddenRouteImport.update({
   id: '/forbidden',
   path: '/forbidden',
@@ -38,37 +48,89 @@ const PublicLoginRoute = PublicLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => PublicRoute,
 } as any)
+const AuthDevicesIndexRoute = AuthDevicesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthDevicesRoute,
+} as any)
+const AuthDevicesIdRoute = AuthDevicesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => AuthDevicesRoute,
+} as any)
+const AuthDevicesIdIndexRoute = AuthDevicesIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthDevicesIdRoute,
+} as any)
+const AuthDevicesIdSettingsRoute = AuthDevicesIdSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthDevicesIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthIndexRoute
+  '/devices': typeof AuthDevicesRouteWithChildren
   '/forbidden': typeof AuthForbiddenRoute
   '/login': typeof PublicLoginRoute
+  '/devices/$id': typeof AuthDevicesIdRouteWithChildren
+  '/devices/': typeof AuthDevicesIndexRoute
+  '/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
+  '/devices/$id/': typeof AuthDevicesIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AuthIndexRoute
   '/forbidden': typeof AuthForbiddenRoute
   '/login': typeof PublicLoginRoute
+  '/devices': typeof AuthDevicesIndexRoute
+  '/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
+  '/devices/$id': typeof AuthDevicesIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_auth': typeof AuthRouteWithChildren
   '/_public': typeof PublicRouteWithChildren
+  '/_auth/devices': typeof AuthDevicesRouteWithChildren
   '/_auth/forbidden': typeof AuthForbiddenRoute
   '/_public/login': typeof PublicLoginRoute
   '/_auth/': typeof AuthIndexRoute
+  '/_auth/devices/$id': typeof AuthDevicesIdRouteWithChildren
+  '/_auth/devices/': typeof AuthDevicesIndexRoute
+  '/_auth/devices/$id/settings': typeof AuthDevicesIdSettingsRoute
+  '/_auth/devices/$id/': typeof AuthDevicesIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/forbidden' | '/login'
+  fullPaths:
+    | '/'
+    | '/devices'
+    | '/forbidden'
+    | '/login'
+    | '/devices/$id'
+    | '/devices/'
+    | '/devices/$id/settings'
+    | '/devices/$id/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/forbidden' | '/login'
+  to:
+    | '/'
+    | '/forbidden'
+    | '/login'
+    | '/devices'
+    | '/devices/$id/settings'
+    | '/devices/$id'
   id:
     | '__root__'
     | '/_auth'
     | '/_public'
+    | '/_auth/devices'
     | '/_auth/forbidden'
     | '/_public/login'
     | '/_auth/'
+    | '/_auth/devices/$id'
+    | '/_auth/devices/'
+    | '/_auth/devices/$id/settings'
+    | '/_auth/devices/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -99,6 +161,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthIndexRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/devices': {
+      id: '/_auth/devices'
+      path: '/devices'
+      fullPath: '/devices'
+      preLoaderRoute: typeof AuthDevicesRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/forbidden': {
       id: '/_auth/forbidden'
       path: '/forbidden'
@@ -113,15 +182,73 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PublicLoginRouteImport
       parentRoute: typeof PublicRoute
     }
+    '/_auth/devices/': {
+      id: '/_auth/devices/'
+      path: '/'
+      fullPath: '/devices/'
+      preLoaderRoute: typeof AuthDevicesIndexRouteImport
+      parentRoute: typeof AuthDevicesRoute
+    }
+    '/_auth/devices/$id': {
+      id: '/_auth/devices/$id'
+      path: '/$id'
+      fullPath: '/devices/$id'
+      preLoaderRoute: typeof AuthDevicesIdRouteImport
+      parentRoute: typeof AuthDevicesRoute
+    }
+    '/_auth/devices/$id/': {
+      id: '/_auth/devices/$id/'
+      path: '/'
+      fullPath: '/devices/$id/'
+      preLoaderRoute: typeof AuthDevicesIdIndexRouteImport
+      parentRoute: typeof AuthDevicesIdRoute
+    }
+    '/_auth/devices/$id/settings': {
+      id: '/_auth/devices/$id/settings'
+      path: '/settings'
+      fullPath: '/devices/$id/settings'
+      preLoaderRoute: typeof AuthDevicesIdSettingsRouteImport
+      parentRoute: typeof AuthDevicesIdRoute
+    }
   }
 }
 
+interface AuthDevicesIdRouteChildren {
+  AuthDevicesIdSettingsRoute: typeof AuthDevicesIdSettingsRoute
+  AuthDevicesIdIndexRoute: typeof AuthDevicesIdIndexRoute
+}
+
+const AuthDevicesIdRouteChildren: AuthDevicesIdRouteChildren = {
+  AuthDevicesIdSettingsRoute: AuthDevicesIdSettingsRoute,
+  AuthDevicesIdIndexRoute: AuthDevicesIdIndexRoute,
+}
+
+const AuthDevicesIdRouteWithChildren = AuthDevicesIdRoute._addFileChildren(
+  AuthDevicesIdRouteChildren,
+)
+
+interface AuthDevicesRouteChildren {
+  AuthDevicesIdRoute: typeof AuthDevicesIdRouteWithChildren
+  AuthDevicesIndexRoute: typeof AuthDevicesIndexRoute
+}
+
+const AuthDevicesRouteChildren: AuthDevicesRouteChildren = {
+  AuthDevicesIdRoute: AuthDevicesIdRouteWithChildren,
+  AuthDevicesIndexRoute: AuthDevicesIndexRoute,
+}
+
+const AuthDevicesRouteWithChildren = AuthDevicesRoute._addFileChildren(
+  AuthDevicesRouteChildren,
+)
+
 interface AuthRouteChildren {
+  AuthDevicesRoute: typeof AuthDevicesRouteWithChildren
   AuthForbiddenRoute: typeof AuthForbiddenRoute
   AuthIndexRoute: typeof AuthIndexRoute
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthDevicesRoute: AuthDevicesRouteWithChildren,
   AuthForbiddenRoute: AuthForbiddenRoute,
   AuthIndexRoute: AuthIndexRoute,
 }

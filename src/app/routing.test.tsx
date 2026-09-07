@@ -13,8 +13,7 @@ describe('route guards end to end', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
   })
 
-  // Task 17 adds the /devices/$id route and un-skips this test.
-  it.skip('preserves the attempted path in the redirect search param', async () => {
+  it('preserves the attempted path in the redirect search param', async () => {
     const { router } = renderRoute('/devices/42')
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(router.state.location.search).toMatchObject({ redirect: '/devices/42' })
@@ -49,12 +48,13 @@ describe('login redirect bounce', () => {
   beforeEach(() => installFetchMock())
   afterEach(() => resetFetchMock())
 
-  // Task 17 adds the /devices/$id route and un-skips this test. Until then,
-  // /devices/42 lands on the 404 page instead of the guarded route.
-  it.skip('returns the user to the page they originally asked for', async () => {
+  it('returns the user to the page they originally asked for', async () => {
     mockRoute('POST', '/api/auth/login', { status: 204 })
     mockRoute('GET', '/api/auth/me', {
       body: { user: { id: 'u1', email: 'a@b.co', name: 'Ann', roles: ['admin'] } },
+    })
+    mockRoute('GET', '/api/devices/42', {
+      body: { id: '42', name: 'Boiler', location: 'Plant A', firmware: '1.0.0' },
     })
     const { router } = renderRoute('/devices/42')
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
