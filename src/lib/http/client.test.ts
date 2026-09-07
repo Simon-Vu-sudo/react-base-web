@@ -7,10 +7,17 @@ import {
   mockRoute,
   resetFetchMock,
 } from '@/test/http'
+import { clearTokens, getAccessToken, setTokens } from '@/lib/auth/tokenStore'
 import { HttpError, apiFetch, setHttpHooks } from './client'
 
-beforeEach(() => installFetchMock())
-afterEach(() => resetFetchMock())
+beforeEach(() => {
+  installFetchMock()
+  setTokens({ accessToken: 'access-1', refreshToken: 'refresh-1' })
+})
+afterEach(() => {
+  resetFetchMock()
+  clearTokens()
+})
 
 describe('apiFetch happy path', () => {
   it('returns parsed JSON', async () => {
@@ -18,11 +25,19 @@ describe('apiFetch happy path', () => {
     await expect(apiFetch('/devices')).resolves.toEqual([{ id: 'd1' }])
   })
 
-  it('always sends credentials and never an Authorization header', async () => {
+  it('sends the access token as a Bearer Authorization header and no credentials mode', async () => {
     mockRoute('GET', '/api/devices', { body: [] })
     await apiFetch('/devices')
     const init = lastInit('GET', '/api/devices')
-    expect(init?.credentials).toBe('include')
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer access-1')
+    expect(init?.credentials).toBeUndefined()
+  })
+
+  it('sends no Authorization header when there is no access token', async () => {
+    clearTokens()
+    mockRoute('GET', '/api/devices', { body: [] })
+    await apiFetch('/devices')
+    const init = lastInit('GET', '/api/devices')
     expect(new Headers(init?.headers).has('authorization')).toBe(false)
   })
 
@@ -66,7 +81,9 @@ describe('apiFetch refresh behaviour', () => {
             headers: { 'content-type': 'application/json' },
           })
     })
-    mockRoute('POST', '/api/auth/refresh', { status: 200 })
+    mockRoute('POST', '/api/auth/refresh', {
+      body: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+    })
 
     const [a, b] = await Promise.all([apiFetch('/devices'), apiFetch('/devices')])
 
@@ -86,7 +103,9 @@ describe('apiFetch refresh behaviour', () => {
             headers: { 'content-type': 'application/json' },
           })
     })
-    mockRoute('POST', '/api/auth/refresh', { status: 200 })
+    mockRoute('POST', '/api/auth/refresh', {
+      body: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+    })
 
     await expect(apiFetch('/me/settings')).resolves.toEqual({ ok: true })
     expect(callCount('GET', '/api/me/settings')).toBe(2)
@@ -94,7 +113,9 @@ describe('apiFetch refresh behaviour', () => {
 
   it('does not retry a second time when the replay also 401s', async () => {
     mockRoute('GET', '/api/devices', { status: 401 })
-    mockRoute('POST', '/api/auth/refresh', { status: 200 })
+    mockRoute('POST', '/api/auth/refresh', {
+      body: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+    })
 
     await expect(apiFetch('/devices')).rejects.toMatchObject({ status: 401 })
     expect(callCount('GET', '/api/devices')).toBe(2)
@@ -133,7 +154,9 @@ describe('apiFetch refresh behaviour', () => {
             headers: { 'content-type': 'application/json' },
           })
     })
-    mockRoute('POST', '/api/auth/refresh', { status: 200 })
+    mockRoute('POST', '/api/auth/refresh', {
+      body: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+    })
 
     await apiFetch('/devices')
     await apiFetch('/devices')

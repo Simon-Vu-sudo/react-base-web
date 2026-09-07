@@ -1,5 +1,5 @@
 import { env } from '@/config/env'
-import { csrfHeaders } from './csrf'
+import { clearTokens, getAccessToken, getRefreshToken, setTokens } from '@/lib/auth/tokenStore'
 
 export class HttpError extends Error {
   constructor(
@@ -27,6 +27,8 @@ export function setHttpHooks(next: Partial<HttpHooks>): void {
 const url = (path: string) => `${env.API_URL}${path}`
 const isAuthPath = (path: string) => path.startsWith('/auth/')
 
+type RefreshResponse = { accessToken: string; refreshToken: string }
+
 /**
  * Module-level single-flight. N concurrent 401s join one refresh rather than
  * stampeding the endpoint; the slot is released as soon as it settles so a
@@ -36,28 +38,37 @@ let refreshInFlight: Promise<boolean> | null = null
 
 function refreshOnce(): Promise<boolean> {
   if (!refreshInFlight) {
-    refreshInFlight = fetch(url('/auth/refresh'), {
-      method: 'POST',
-      credentials: 'include',
+    refreshInFlight = (async () => {
+      const refreshToken = getRefreshToken()
+      if (!refreshToken) return false
+      try {
+        const res = await fetch(url('/auth/refresh'), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        })
+        if (!res.ok) return false
+        const body = (await res.json()) as RefreshResponse
+        setTokens(body)
+        return true
+      } catch {
+        return false
+      }
+    })().finally(() => {
+      refreshInFlight = null
     })
-      .then((res) => res.ok)
-      .catch(() => false)
-      .finally(() => {
-        refreshInFlight = null
-      })
   }
   return refreshInFlight
 }
 
 function send(path: string, init: RequestInit): Promise<Response> {
-  const method = (init.method ?? 'GET').toUpperCase()
+  const accessToken = getAccessToken()
   return fetch(url(path), {
     ...init,
-    credentials: 'include',
     headers: {
       ...(init.body ? { 'content-type': 'application/json' } : {}),
       ...init.headers,
-      ...csrfHeaders(method),
+      ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}),
     },
   })
 }
@@ -86,6 +97,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   const refreshed = await refreshOnce()
   if (!refreshed) {
+    clearTokens()
     hooks.onRefreshFailed()
     throw new HttpError(401, await readBody(res))
   }
