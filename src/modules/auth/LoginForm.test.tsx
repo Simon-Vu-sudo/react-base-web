@@ -3,13 +3,38 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { installFetchMock, mockRoute, resetFetchMock, callCount } from '@/test/http'
 import { authStore } from '@/lib/auth/store'
+import { clearTokens } from '@/lib/auth/tokenStore'
 import { LoginForm } from './LoginForm'
+
+/** Base64url-encodes a JSON payload the way a real JWT segment would be. */
+function encodeSegment(value: unknown): string {
+  const json = JSON.stringify(value)
+  const bytes = new TextEncoder().encode(json)
+  const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function makeJwt(claims: Record<string, unknown>): string {
+  return `${encodeSegment({ alg: 'HS256', typ: 'JWT' })}.${encodeSegment(claims)}.sig`
+}
+
+const accessToken = makeJwt({
+  sub: 'u1',
+  email: 'a@b.co',
+  name: 'Ann',
+  roles: ['viewer'],
+  exp: Math.floor(Date.now() / 1000) + 3600,
+})
 
 beforeEach(() => {
   installFetchMock()
   authStore.getState().setUnauthenticated()
+  clearTokens()
 })
-afterEach(() => resetFetchMock())
+afterEach(() => {
+  resetFetchMock()
+  clearTokens()
+})
 
 const fill = async (email: string, password: string) => {
   await userEvent.type(screen.getByLabelText('Email'), email)
@@ -33,11 +58,8 @@ describe('<LoginForm>', () => {
 
   it('calls onSuccess after a successful login', async () => {
     const onSuccess = vi.fn()
-    // /auth/login returns 204 with no body; /auth/me is the sole source of identity.
-    mockRoute('POST', '/api/auth/login', { status: 204 })
-    mockRoute('GET', '/api/auth/me', {
-      body: { user: { id: 'u1', email: 'a@b.co', name: 'Ann', roles: ['viewer'] } },
-    })
+    // /auth/login returns the token pair; identity is decoded from the access token.
+    mockRoute('POST', '/api/auth/login', { body: { accessToken, refreshToken: 'r1' } })
     render(<LoginForm onSuccess={onSuccess} />)
     await fill('a@b.co', 'pw')
     await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
@@ -77,10 +99,7 @@ describe('<LoginForm>', () => {
   // spec §9 directly — a double-submit must not fire two logins — rather than the
   // disabled-attribute mechanism, which is less timing-dependent.
   it('does not fire a second login when submit is double-clicked', async () => {
-    mockRoute('POST', '/api/auth/login', { status: 204 })
-    mockRoute('GET', '/api/auth/me', {
-      body: { user: { id: 'u1', email: 'a@b.co', name: 'Ann', roles: ['viewer'] } },
-    })
+    mockRoute('POST', '/api/auth/login', { body: { accessToken, refreshToken: 'r1' } })
     render(<LoginForm onSuccess={vi.fn()} />)
     await fill('a@b.co', 'pw')
     const btn = screen.getByRole('button', { name: /sign in/i })
