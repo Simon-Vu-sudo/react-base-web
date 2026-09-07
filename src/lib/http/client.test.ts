@@ -39,6 +39,18 @@ describe('apiFetch happy path', () => {
     })
     await expect(apiFetch('/devices')).rejects.toBeInstanceOf(HttpError)
   })
+
+  it('throws HttpError with the raw text when the error body is not JSON', async () => {
+    mockRoute(
+      'GET',
+      '/api/devices',
+      () => new Response('<html>Internal Server Error</html>', { status: 500 }),
+    )
+    await expect(apiFetch('/devices')).rejects.toMatchObject({
+      status: 500,
+      body: '<html>Internal Server Error</html>',
+    })
+  })
 })
 
 describe('apiFetch refresh behaviour', () => {
@@ -126,6 +138,18 @@ describe('apiFetch refresh behaviour', () => {
     await apiFetch('/devices')
     await apiFetch('/devices')
     expect(callCount('POST', '/api/auth/refresh')).toBe(2)
+  })
+
+  it('calls onRefreshFailed and rejects when the refresh request itself errors', async () => {
+    const onRefreshFailed = vi.fn()
+    setHttpHooks({ onRefreshFailed })
+    mockRoute('GET', '/api/devices', { status: 401 })
+    mockNetworkError('POST', '/api/auth/refresh')
+
+    await expect(apiFetch('/devices')).rejects.toMatchObject({ status: 401 })
+    expect(onRefreshFailed).toHaveBeenCalledTimes(1)
+    expect(callCount('GET', '/api/devices')).toBe(1)
+    setHttpHooks({ onRefreshFailed: () => {} })
   })
 })
 
