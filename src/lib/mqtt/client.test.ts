@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeConnectFactory, lastFakeClient, resetFakeClients } from '@/test/fakeMqtt'
 import { authStore } from '@/lib/auth/store'
+import { clearTokens, setTokens } from '@/lib/auth/tokenStore'
 import { connectionStore } from './connectionStore'
 import {
   connectMqtt,
@@ -20,10 +21,12 @@ beforeEach(() => {
   resetFakeClients()
   setConnectFactory(fakeConnectFactory)
   authStore.getState().setUnauthenticated()
+  setTokens({ accessToken: 'access-1', refreshToken: 'refresh-1' })
 })
 
 afterEach(async () => {
   await disconnectMqtt()
+  clearTokens()
 })
 
 describe('makeClientId', () => {
@@ -36,16 +39,29 @@ describe('makeClientId', () => {
 })
 
 describe('connectMqtt', () => {
-  it('passes NO credentials to the broker', async () => {
+  it('passes the access token as the broker password, with a fixed username', async () => {
     authStore.getState().setSession(user)
     await connectMqtt()
     const opts = lastFakeClient()!.options
 
-    // The requirement: the frontend never holds a token. The session cookie
-    // rides the WebSocket upgrade and the backend authenticates it.
-    expect(opts.username).toBeUndefined()
-    expect(opts.password).toBeUndefined()
-    expect(opts.transformWsUrl).toBeUndefined()
+    // Bearer-token auth: there is no session cookie to authenticate the
+    // WebSocket upgrade, so the JWT rides as the MQTT password instead.
+    expect(opts.username).toBe('jwt')
+    expect(opts.password).toBe('access-1')
+    expect(typeof opts.transformWsUrl).toBe('function')
+  })
+
+  it('refreshes the password from storage via transformWsUrl on reconnect', async () => {
+    authStore.getState().setSession(user)
+    await connectMqtt()
+    const opts = lastFakeClient()!.options
+    setTokens({ accessToken: 'access-2', refreshToken: 'refresh-2' })
+
+    const transform = opts.transformWsUrl as (url: string, o: Record<string, unknown>) => string
+    const result = transform('ws://broker/mqtt', opts)
+
+    expect(result).toBe('ws://broker/mqtt')
+    expect(opts.password).toBe('access-2')
   })
 
   it('connects with a clean session and a unique client id', async () => {

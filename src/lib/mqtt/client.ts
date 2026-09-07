@@ -1,5 +1,6 @@
 import { env } from '@/config/env'
 import { authStore } from '@/lib/auth/store'
+import { getAccessToken } from '@/lib/auth/tokenStore'
 import { connectionStore } from './connectionStore'
 import { matchTopic } from './topics'
 
@@ -74,17 +75,30 @@ export async function connectMqtt(): Promise<void> {
 
     connectionStore.getState().setStatus('connecting')
 
-    // No username, no password, no token. The browser attaches the session
-    // cookie to the WebSocket upgrade and the backend authenticates it —
-    // the same trust model as every REST call.
+    // The JWT rides as the MQTT password — the conventional pattern for
+    // MQTT-over-WebSocket with Bearer auth, now that there is no session
+    // cookie to authenticate the upgrade automatically. `username: 'jwt'`
+    // is a fixed marker the broker's auth hook uses to tell it apart from a
+    // plain username/password credential; the token itself is the secret.
     const next = connect(env.MQTT_URL, {
       clientId: makeClientId(user.id),
+      username: 'jwt',
+      password: getAccessToken() ?? undefined,
       // A browser is not a durable subscriber: a persistent session makes the
       // broker queue messages for tabs that closed days ago.
       clean: true,
       keepalive: 30,
       connectTimeout: 10_000,
       reconnectPeriod: BASE_RECONNECT_MS,
+      // MQTT.js calls this just before each (re)connect attempt, passing the
+      // live options object it is about to connect with. Refreshing the
+      // password here means a reconnect after an HTTP-side token refresh
+      // uses the current token rather than the one captured at first
+      // connect. It only reads storage, so doing this synchronously is fine.
+      transformWsUrl: (wsUrl: string, opts: Record<string, unknown>) => {
+        opts.password = getAccessToken() ?? undefined
+        return wsUrl
+      },
     })
 
     next.on('connect', () => {
