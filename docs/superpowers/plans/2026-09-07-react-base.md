@@ -3251,6 +3251,16 @@ git commit -m "feat: add login page with validation and redirect bounce"
 
 ## Task 14: MQTT topics, payload schemas and credential cache
 
+> **AMENDED 2026-09-07 by requirement change.** The user tightened the rule to
+> *"the frontend never touches, stores, or even sees a token string."* The
+> credential-cache half of this task (`src/lib/mqtt/credentials.ts` and its 7
+> tests, Steps 5–8 below) is **deleted** — the browser authenticates to the
+> broker with the session cookie it already sends on the WebSocket upgrade, so
+> there is no credential for the frontend to hold. See spec §10.2. The
+> superseding brief is
+> `.superpowers/sdd/2026-09-07-react-base/task-14-brief-AMENDED.md`; Steps 5–8
+> below are obsolete and were not executed.
+
 **Files:**
 - Create: `src/lib/mqtt/topics.ts`, `src/lib/mqtt/credentials.ts`
 - Test: `src/lib/mqtt/topics.test.ts`, `src/lib/mqtt/credentials.test.ts`
@@ -3596,6 +3606,15 @@ git commit -m "feat: add MQTT topic registry, payload validation and credential 
 ---
 
 ## Task 15: MQTT client, fake transport and lifecycle
+
+> **AMENDED 2026-09-07 by requirement change.** The credential fetch, the
+> `transformWsUrl` refresh hook, and the `username`/`password` connect options
+> are all **removed** — the frontend passes no credential to the broker and the
+> session cookie rides the WebSocket upgrade. See spec §10.2. The superseding
+> brief is
+> `.superpowers/sdd/2026-09-07-react-base/task-15-brief-AMENDED.md`; the
+> `client.ts` and test code below are obsolete in their credential-handling
+> parts and were not executed as written.
 
 **Files:**
 - Create: `src/lib/mqtt/client.ts`, `src/lib/mqtt/connectionStore.ts`, `src/test/fakeMqtt.ts`

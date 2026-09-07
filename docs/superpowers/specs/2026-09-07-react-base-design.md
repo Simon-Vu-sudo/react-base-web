@@ -31,6 +31,8 @@ The base includes one minimal but complete vertical slice (login → dashboard �
 | Permission mapping | Static typed map in FE code; BE sends roles only |
 | Permission granularity | Flat permission strings, no object context |
 | Auth transport | Access + refresh tokens, both HttpOnly cookies set by BE |
+| Token visibility | **The FE never touches, stores, or sees a token string** — no exceptions, including for the MQTT broker |
+| User data source | **`GET /auth/me` is the only source of user identity and roles** — no other response body supplies them |
 | Session bootstrap | `GET /auth/me` before the router mounts |
 | Token refresh | Reactive, on 401, single-flight, replay once |
 | Cookie scope | Designed for same-site (`SameSite=Lax`); CSRF module is a one-file opt-in |
@@ -272,7 +274,7 @@ The sidebar is generated from `config/nav.ts` — `{ to, label, permission }[]` 
 ## 9. Login page (`_public.login.tsx`)
 
 - `_public`'s `beforeLoad` bounces authenticated users to `/`
-- Flow: submit → `POST /auth/login` → BE sets both cookies → the response body carries the user (fall back to `GET /auth/me` if the BE returns an empty body) → populate `authStore` → navigate to `search.redirect ?? '/'`
+- Flow: submit → `POST /auth/login` → BE sets both cookies and returns `204` with **no body** → `GET /auth/me` supplies the user and roles → populate `authStore` → navigate to `search.redirect ?? '/'`. The login response deliberately carries no user data, so there is no second code path that could disagree with `/auth/me`
 - react-hook-form + zod schema (email format, password non-empty)
 - Errors: `401` → one **form-level** message ("email or password is incorrect"), never field-specific, because field-specific errors confirm which accounts exist; `429` → rate-limit message; network error → retry banner
 - Submit disabled while pending, so double-submit cannot fire two logins
@@ -284,15 +286,26 @@ The sidebar is generated from `config/nav.ts` — `{ to, label, permission }[]` 
 
 MQTT.js in the browser speaks **MQTT over WebSocket only** — `wss://host:8084/mqtt`, never `mqtt://host:1883`. The broker must expose a WebSocket listener (Mosquitto: `listener 9001` + `protocol websockets`; EMQX: `8083`/`8084` by default).
 
-### 10.2 Credentials
+### 10.2 Authentication
 
-MQTT authenticates with a username/password inside its own CONNECT packet, not with HTTP headers — and the FE cannot read an HttpOnly cookie to supply a token. Therefore:
+**The FE passes no credential to the broker.** The WebSocket upgrade is an HTTP request, so the browser attaches the session cookie to it automatically — exactly as it does for REST. The frontend simply connects:
 
-`GET /iot/mqtt-credentials` (authenticated by the session cookie) returns `{ url, clientId, username, password, expiresAt }`.
+```ts
+mqtt.connect(env.MQTT_URL, { clientId, clean: true, keepalive: 30, connectTimeout: 10_000 })
+```
 
-Because `expiresAt` is readable, the client **proactively refreshes into a cache before expiry**. `transformWsUrl` reads that cache **synchronously** on each reconnect — its signature returns a URL string and cannot await. If the cache is stale, the connect attempt fails, MQTT.js retries with backoff, and an async refresh fills the cache meanwhile. The design is self-healing rather than dependent on perfect timing.
+No username, no password, no credential fetch, no token of any kind. This satisfies the absolute rule in §3: the frontend never sees a token string, and the MQTT broker is not an exception to it.
 
-This indirection also covers AWS IoT Core, where the BE returns a presigned `wss` URL through the same endpoint.
+Authentication stays in the backend. Two deployment shapes support this, and **the frontend code is identical for both**, so the choice is a backend/infrastructure decision that does not affect this codebase:
+
+1. **The broker asks the BE.** EMQX and HiveMQ support an HTTP authentication hook: on connect, the broker calls a URL the BE hosts, forwarding the cookie, and the BE answers allow/deny plus the topic ACL.
+2. **The BE or a proxy terminates the WebSocket.** The FE connects to `wss://<app origin>/mqtt`; nginx `auth_request` or the API authenticates the cookie like any other request, then relays to the broker. Works with any broker, including plain Mosquitto.
+
+Only `VITE_MQTT_URL` differs between them.
+
+**Session expiry mid-connection:** an established MQTT connection persists, so the broker will not notice a session expiring. The next reconnect's handshake fails and the connection badge goes offline — correct, and visible to the user.
+
+This design is also *less* code than a credential-passing one: there is no credential cache, no expiry tracking, and no `transformWsUrl` hook, because the browser resends the cookie on every reconnect automatically.
 
 ### 10.3 Lifecycle
 
@@ -440,11 +453,10 @@ Endpoints the FE requires:
 
 | Method | Path | Request | Response |
 |---|---|---|---|
-| POST | `/auth/login` | `{ email, password }` | `200 { user: { id, email, name, roles[] } }` + `Set-Cookie` (access, refresh) |
+| POST | `/auth/login` | `{ email, password }` | `204` **no body** + `Set-Cookie` (access, refresh) |
 | POST | `/auth/refresh` | — (reads refresh cookie) | `200` + `Set-Cookie` (new access) / `401` |
 | POST | `/auth/logout` | — | `204`, clears both cookies |
 | GET | `/auth/me` | — | `200 { user }` / `401` |
-| GET | `/iot/mqtt-credentials` | — | `200 { url, clientId, username, password, expiresAt }` |
 | GET | `/devices` | — | `200 Device[]` |
 | GET | `/devices/:id` | — | `200 Device` / `404` |
 | PATCH | `/devices/:id` | partial `Device` | `200 Device` |
@@ -452,15 +464,15 @@ Endpoints the FE requires:
 
 **Cookie flags required:** `HttpOnly; Secure; SameSite=Lax; Path=/`. `HttpOnly` is the entire point — without it there is no advantage over `localStorage`.
 
-**Broker requirements:** a WebSocket listener, and per-topic ACLs keyed to the credential returned by `/iot/mqtt-credentials`.
+**Broker requirements:** a WebSocket listener, and authentication delegated to the BE per §10.2 — either the broker's HTTP auth hook or a BE/proxy-terminated WebSocket. Topic ACLs are keyed to the authenticated session, not to any credential the FE holds. The broker endpoint must be same-site with the API so the browser attaches the session cookie to the upgrade request.
 
 ## 15. Assumptions
 
 1. Roles are flat strings with no hierarchy or inheritance.
 2. FE and BE are same-site in production. If this changes, the BE must switch to `SameSite=None; Secure` with credentialed CORS, and `VITE_ENABLE_CSRF` must be turned on.
 3. The broker exposes MQTT over WebSocket.
-4. `POST /auth/login` returns the user in its body; if not, the FE falls back to `GET /auth/me`.
-5. The BE issues short-lived MQTT credentials scoped to the account's topic ACL.
+4. `POST /auth/login` returns `204` with no body. `GET /auth/me` is the only endpoint supplying user identity and roles.
+5. The broker receives the session cookie on the WebSocket upgrade and delegates authentication to the BE (§10.2). This requires the broker endpoint to be same-site with the API.
 
 ## 16. Demo slice
 
