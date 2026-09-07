@@ -9,7 +9,7 @@ A reusable React application base, built on Vite, for internal IoT device-manage
 
 1. **Phân quyền (RBAC)** — role-based permissions, resolved on the FE from roles sent by the BE
 2. **Routing / sub-routing** — nested, type-safe routes with guards that compose by nesting
-3. **Auth** — HttpOnly cookie sessions with reactive token refresh
+3. **Auth** — Bearer JWTs with reactive token refresh (decoded client-side for UI gating; the BE remains the authorization boundary)
 4. **MQTT** — IoT telemetry over MQTT-over-WebSocket
 5. **Unit tests** — Vitest + React Testing Library
 6. **Automation tests** — Playwright
@@ -30,12 +30,12 @@ The base includes one minimal but complete vertical slice (login → dashboard �
 |---|---|
 | Permission mapping | Static typed map in FE code; BE sends roles only |
 | Permission granularity | Flat permission strings, no object context |
-| Auth transport | **JWT** access + refresh tokens, both HttpOnly cookies set by BE |
-| Token visibility | **The FE never touches, stores, or sees a token string** — no exceptions, including for the MQTT broker |
-| User data source | **`GET /auth/me` is the only source of user identity and roles** — no other response body supplies them |
-| Session bootstrap | `GET /auth/me` before the router mounts |
-| Token refresh | Reactive, on 401, single-flight, replay once |
-| Cookie scope | Designed for same-site (`SameSite=Lax`); CSRF module is a one-file opt-in |
+| Auth transport | **JWT** access + refresh tokens, returned in the `POST /auth/login` / `/auth/refresh` response bodies and sent back as `Authorization: Bearer <accessToken>` |
+| Token storage | `localStorage`, behind one module (`lib/auth/tokenStore.ts`) — see §3.1 for the trade-off |
+| User data source | **The access token's own claims** (`sub`, `email`, `name`, `roles`) are the source of identity and roles — there is no `GET /auth/me` |
+| Session bootstrap | No network call in the common case — decode the stored access token; refresh once if it is expired (§7.1) |
+| Token refresh | Reactive, on 401 (or an expired token found at bootstrap), single-flight, replay once |
+| CSRF | Not applicable — CSRF exploits the browser auto-attaching cookies; a Bearer header is attached by application code, so the vector does not exist (`lib/http/csrf.ts` removed) |
 | Router | TanStack Router (file-based, type-safe) |
 | Data layer | TanStack Query for REST |
 | Client state | Zustand |
@@ -49,29 +49,47 @@ The base includes one minimal but complete vertical slice (login → dashboard �
 | `routeTree.gen.ts` | Committed to the repo; CI verifies it is current |
 | Language | TypeScript, strict |
 
-### 3.1 On JWTs specifically
+### 3.1 On JWTs specifically — Bearer, not HttpOnly cookies
 
-The backend authenticates with **JWTs**. They are carried in HttpOnly cookies, so the
-frontend never reads, parses, stores, or forwards them — it only sends
-`credentials: 'include'` and lets the browser attach the cookie.
+This base was originally cookie-based (§16 history: the FE never touched a token
+string; `GET /auth/me` was the sole identity source). The owner reversed that decision.
+The frontend now **holds both tokens and reads its own claims out of the access token**.
+This is a deliberate architecture change, not a drift, and it is worth stating the
+trade-off plainly rather than leaving it implicit:
 
-These two facts are not in tension, and it is worth stating plainly because the
-combination is easy to misread in both directions:
+- **The access token lives in `localStorage`, and `localStorage` is readable by any
+  script that can execute in the page's origin.** A successful XSS can read both
+  tokens and exfiltrate them. HttpOnly cookies do not have this exposure — that is
+  the entire reason the previous design used them.
+- In exchange, the frontend gets to decode its own identity and roles without a
+  network round-trip, gets an explicit, application-controlled point (the
+  `Authorization` header) rather than an implicit browser behaviour, and stops
+  needing CSRF protection, since CSRF specifically exploits the browser
+  auto-attaching a cookie the app didn't ask it to send.
+- **Signature verification is never attempted client-side** (`lib/auth/jwt.ts`). The
+  frontend cannot hold the signing secret, and a check against a key the client
+  doesn't have would prove nothing to an attacker who can edit the token in devtools
+  anyway. Decoded claims are for **display and UI gating only**; the backend, which
+  re-verifies every request, remains the sole authorization boundary (§4). This was
+  already true of the old design's permission layer — decoding on the client instead
+  of getting claims from `/auth/me` does not change where the boundary sits.
+- This is a one-file trade: everything reads/writes tokens through
+  `lib/auth/tokenStore.ts`. A project that wants to reduce the XSS blast radius (at
+  the cost of "a page refresh always needs a silent-refresh round-trip", or "logs the
+  user out") would change only that file to hold the access token in memory instead.
 
-- "The FE never sees a token" does **not** mean the system avoids JWTs. It means the
-  JWT is invisible to frontend code.
-- Because the token is invisible, the frontend cannot tell whether a cookie carries a
-  JWT or an opaque session id. That is a property, not a gap: the backend can change
-  its token format without a single frontend change.
+Practical consequences of the frontend reading the JWT:
 
-Practical consequences of the frontend never reading the JWT:
-
-- No `Authorization` header is ever set (there is a test asserting its absence).
-- Refresh is **reactive**, not scheduled — the frontend cannot decode an expiry, so it
-  refreshes on a `401` rather than ahead of one (§7.3).
-- Identity and roles come from `GET /auth/me`, not from decoding the token (§7.1).
-- The MQTT broker gets no credential from the frontend either; the session cookie
-  rides the WebSocket upgrade (§10.2).
+- `Authorization: Bearer <accessToken>` is attached to every request that has a
+  token (there is a test asserting its *presence*, inverted from the old design).
+- Refresh is still **reactive on 401** for the http client's single-flight path, but
+  bootstrap additionally does one **proactive** refresh when the stored token's own
+  `exp` claim has already passed — the frontend can decode expiry now, so there is no
+  reason to make a doomed request first (§7.1).
+- Identity and roles come from decoding the access token (`lib/auth/jwt.ts`), not from
+  `GET /auth/me` — that endpoint no longer exists in this design (§7.1).
+- The MQTT broker gets the access token as its password (§10.2), since there is no
+  session cookie to ride the WebSocket upgrade automatically anymore.
 
 ## 4. Security boundary
 
@@ -170,17 +188,33 @@ All four read the same resolved `Set`:
 
 ### 7.1 Bootstrap
 
-Because both tokens are HttpOnly, the FE knows nothing on page load. `app/bootstrap` calls `GET /auth/me` **once, before `RouterProvider` mounts**, and seeds the auth store. Guards therefore never run against an unknown session, which eliminates redirect flicker and guard races.
+`bootstrap()` (`lib/auth/service.ts`) runs **once, before `RouterProvider` mounts** (called
+from `main.tsx`), and seeds the auth store. Guards therefore never run against an unknown
+session, which eliminates redirect flicker and guard races. Unlike the cookie design, this
+makes **no network call in the common case** — there is no `GET /auth/me`; identity and
+roles are decoded straight from the access token already sitting in `tokenStore`:
 
-**Bootstrap has three outcomes, not two:**
-
-| Response | State |
+| Stored access token | Outcome |
 |---|---|
-| `200` | `authenticated` — user + resolved permissions in the store |
-| `401` | `unauthenticated` — router mounts, guards send the user to `/login` |
+| absent, or undecodable (`decodeJwt` returns `null`) | `unauthenticated` |
+| present and unexpired | `authenticated` — user + resolved permissions decoded straight from the claims, no request made |
+| present but expired (`isExpired` is true) | one refresh attempt — see below |
+
+**The expired-token refresh attempt still has three outcomes, and the third one matters
+exactly as much as it did under cookie auth:**
+
+| `POST /auth/refresh` result | State |
+|---|---|
+| `200` with a new token pair | `authenticated` — new tokens stored, session decoded from the new access token |
+| `401` (the refresh token is also dead) | `unauthenticated` — router mounts, guards send the user to `/login` |
 | network error / `5xx` | **`bootstrapError`** — full-page "cannot reach server" with retry |
 
-The third case is mandatory. Treating a BE outage as "unauthenticated" silently logs out every user and strands them on a login page that also cannot work.
+The third case is mandatory, and it is *narrower* now than it was under cookie auth: it can
+only be reached by a user whose access token had already expired locally, since a valid
+token authenticates with zero network calls. It is still necessary — treating "the server is
+down" as "this token is bad" would silently sign out every such user and strand them on a
+login page that also cannot work. `bootstrapError` is kept in the store's `AuthStatus` type
+for exactly this narrower case.
 
 ### 7.2 Store
 
@@ -196,27 +230,39 @@ The third case is mandatory. Treating a BE outage as "unauthenticated" silently 
 
 ### 7.3 HTTP client and refresh
 
-A single `apiFetch` wrapper, always `credentials: 'include'`. No `Authorization` header is ever set — the FE cannot read the tokens.
+A single `apiFetch` wrapper. It attaches `Authorization: Bearer <accessToken>` when
+`tokenStore.getAccessToken()` returns one, and nothing otherwise — this **reverses** the
+cookie design's rule, which asserted the header's absence. `credentials: 'include'` is gone;
+it implied cookie auth and means nothing for a Bearer header attached by application code.
 
 On `401`:
 
-1. Join a **module-level single-flight promise**, so N concurrent 401s produce exactly one `POST /auth/refresh`
-2. On success, replay each original request **exactly once**, tracked by a per-request retry counter so a misbehaving BE cannot cause an infinite loop
-3. On failure, clear the auth store, call `queryClient.clear()`, and redirect to `/login?redirect=<current>`
+1. Join a **module-level single-flight promise**, so N concurrent 401s produce exactly one
+   `POST /auth/refresh` — sent with an explicit body, `{ refreshToken }`, since there is no
+   cookie for the BE to read implicitly
+2. On success (`{ accessToken, refreshToken }` back), `setTokens(...)` the rotated pair, then
+   replay each original request **exactly once**, now carrying the *new* access token —
+   tracked by a per-request retry counter so a misbehaving BE cannot cause an infinite loop
+3. On failure, `clearTokens()`, then the existing `onRefreshFailed` hook: clear the auth
+   store, call `queryClient.clear()`, and redirect to `/login?redirect=<current>`
 
-`/auth/*` paths are exempt from the interceptor entirely; without this, a failing refresh recurses.
+`/auth/*` paths are exempt from the interceptor entirely; without this, a failing refresh
+recurses. These three properties — single-flight, replay-once, `/auth/*` exemption — are
+unchanged by the Bearer migration and still each have a dedicated test.
 
-On `403`: refetch `GET /auth/me` to resync permissions (this covers a role change made on the BE mid-session). Re-running the guards is *not* done here — updating the store triggers the subscription in section 8.4, which invalidates the router. One mechanism, one place.
+On `403`: there is no `/auth/me` to refetch, so `resyncSession()` forces one refresh call and
+decodes the new access token to pick up a role change made on the BE mid-session. A failure
+here is left alone — the `401` path above already handles a truly dead session. Re-running
+the guards is *not* done here — updating the store triggers the subscription in section 8.4,
+which invalidates the router. One mechanism, one place.
 
 ### 7.4 Logout
 
-`POST /auth/logout` (the BE clears the cookies — the FE cannot), then reset the auth store, `client.endAsync()` the MQTT connection, and call **`queryClient.clear()`**.
+`POST /auth/logout` (best-effort — the BE has nothing to clear client-side, so a failure here
+is swallowed rather than blocking logout), then `clearTokens()`, reset the auth store,
+`client.endAsync()` the MQTT connection, and call **`queryClient.clear()`**.
 
 Clearing the Query cache is not optional: without it, a second user logging in on the same tab sees the first user's cached device list. That is a permission leak.
-
-### 7.5 CSRF
-
-`http/csrf.ts` ships as a single opt-in interceptor: it reads a non-HttpOnly `XSRF-TOKEN` cookie and sets `X-XSRF-TOKEN` on mutating methods. Disabled by default (same-site `Lax` covers it); enabled by one env flag if the deployment becomes cross-domain. Cross-domain additionally requires the BE to set `SameSite=None; Secure` and CORS with `Allow-Credentials` plus an explicit origin.
 
 ## 8. Routing and guards (`src/routes/`, `src/lib/rbac/guards.ts`)
 
@@ -317,7 +363,7 @@ The sidebar is generated from `config/nav.ts` — `{ to, label, permission }[]` 
 ## 9. Login page (`_public.login.tsx`)
 
 - `_public`'s `beforeLoad` bounces authenticated users to `/`
-- Flow: submit → `POST /auth/login` → BE sets both cookies and returns `204` with **no body** → `GET /auth/me` supplies the user and roles → populate `authStore` → navigate to `search.redirect ?? '/'`. The login response deliberately carries no user data, so there is no second code path that could disagree with `/auth/me`
+- Flow: submit → `POST /auth/login` returns `{ accessToken, refreshToken }` → `setTokens(...)` persists both → the access token is decoded (`lib/auth/jwt.ts`) for identity and roles → populate `authStore` → navigate to `search.redirect ?? '/'`. There is exactly one code path that produces a session — decoding the access token the login response itself returned — so nothing can disagree with it
 - react-hook-form + zod schema (email format, password non-empty)
 - Errors: `401` → one **form-level** message ("email or password is incorrect"), never field-specific, because field-specific errors confirm which accounts exist; `429` → rate-limit message; network error → retry banner
 - Submit disabled while pending, so double-submit cannot fire two logins
@@ -331,24 +377,53 @@ MQTT.js in the browser speaks **MQTT over WebSocket only** — `wss://host:8084/
 
 ### 10.2 Authentication
 
-**The FE passes no credential to the broker.** The WebSocket upgrade is an HTTP request, so the browser attaches the session cookie to it automatically — exactly as it does for REST. The frontend simply connects:
+**The FE passes the access token to the broker as the MQTT password.** There is no session
+cookie under Bearer auth, so nothing rides the WebSocket upgrade automatically anymore — the
+frontend has to hand the broker a credential explicitly, the same way it hands the API one:
 
 ```ts
-mqtt.connect(env.MQTT_URL, { clientId, clean: true, keepalive: 30, connectTimeout: 10_000 })
+const token = getAccessToken()
+mqtt.connect(env.MQTT_URL, {
+  clientId,
+  username: 'jwt',
+  password: token ?? undefined,
+  clean: true,
+  keepalive: 30,
+  connectTimeout: 10_000,
+  transformWsUrl: (url, opts) => {
+    opts.password = getAccessToken() ?? undefined
+    return url
+  },
+})
 ```
 
-No username, no password, no credential fetch, no token of any kind. This satisfies the absolute rule in §3: the frontend never sees a token string, and the MQTT broker is not an exception to it.
+`username: 'jwt'` is a fixed marker the broker's auth hook uses to recognize a JWT-bearer
+connection rather than a plain username/password pair; the token itself is the secret.
+`transformWsUrl` runs synchronously just before every (re)connect attempt, so it re-reads
+`tokenStore.getAccessToken()` each time — a reconnect that happens after an HTTP-side token
+refresh picks up the *current* token instead of the one captured at first connect. This is
+the one place in the codebase where a token is read outside `lib/http/client.ts`, and it goes
+through the same `tokenStore` choke point as everywhere else.
 
-Authentication stays in the backend. Two deployment shapes support this, and **the frontend code is identical for both**, so the choice is a backend/infrastructure decision that does not affect this codebase:
+Authentication still stays in the backend/broker, not the frontend permission layer. Two
+deployment shapes support this, and **the frontend code is identical for both**, so the
+choice remains a backend/infrastructure decision:
 
-1. **The broker asks the BE.** EMQX and HiveMQ support an HTTP authentication hook: on connect, the broker calls a URL the BE hosts, forwarding the cookie, and the BE answers allow/deny plus the topic ACL.
-2. **The BE or a proxy terminates the WebSocket.** The FE connects to `wss://<app origin>/mqtt`; nginx `auth_request` or the API authenticates the cookie like any other request, then relays to the broker. Works with any broker, including plain Mosquitto.
+1. **The broker asks the BE.** EMQX and HiveMQ support an HTTP authentication hook: on
+   connect, the broker calls a URL the BE hosts, forwarding the username/password (the JWT),
+   and the BE verifies the token's signature and answers allow/deny plus the topic ACL.
+2. **The BE or a proxy terminates the WebSocket** and validates the JWT itself before
+   relaying to the broker. Works with any broker, including plain Mosquitto configured with a
+   plugin that checks the password against the BE's public key or a shared secret.
 
-Only `VITE_MQTT_URL` differs between them.
+Only `VITE_MQTT_URL` and the broker's auth-hook configuration differ between them.
 
-**Session expiry mid-connection:** an established MQTT connection persists, so the broker will not notice a session expiring. The next reconnect's handshake fails and the connection badge goes offline — correct, and visible to the user.
-
-This design is also *less* code than a credential-passing one: there is no credential cache, no expiry tracking, and no `transformWsUrl` hook, because the browser resends the cookie on every reconnect automatically.
+**Session expiry mid-connection:** an established MQTT connection persists even past the
+token's `exp`, so the broker will not notice expiry on its own unless it re-checks
+periodically. The next reconnect's handshake sends whatever `transformWsUrl` produces, which
+is stale only if the HTTP-side refresh has also failed — in the common case a refreshed
+token is already in storage by the time a reconnect happens, and the connection badge goes
+offline only if it is not.
 
 ### 10.3 Lifecycle
 
@@ -433,15 +508,21 @@ No MSW. Two hand-rolled doubles live in `src/test/`:
 - `requireAnyPermission` passes when one of several is held
 
 *HTTP*
+- every request carries `Authorization: Bearer <accessToken>` when a token is stored, and no header when it isn't
 - two concurrent 401s trigger **exactly one** `/auth/refresh` (assert `callCount === 1`)
-- a replayed request is retried **once**, never twice
+- a replayed request is retried **once**, never twice, and uses the rotated access token
 - a 401 on an `/auth/*` path does not trigger the interceptor
-- refresh failure clears the store, clears the Query cache, and redirects to login
-- a 403 triggers a `/auth/me` refetch
+- refresh failure calls `clearTokens()`, clears the store, clears the Query cache, and redirects to login
+- a 403 triggers a forced `/auth/refresh` (`resyncSession`) rather than an `/auth/me` refetch
 
-*Auth store*
-- bootstrap maps 200 / 401 / network error to `authenticated` / `unauthenticated` / `bootstrapError`
-- logout calls `queryClient.clear()` and ends the MQTT connection
+*Auth store / tokenStore / jwt*
+- bootstrap maps a valid / absent-or-undecodable / expired-with-successful-refresh /
+  expired-with-401-refresh / expired-with-network-error token to `authenticated` /
+  `unauthenticated` / `authenticated` / `unauthenticated` / `bootstrapError`
+- logout calls `clearTokens()`, `queryClient.clear()`, and ends the MQTT connection
+- `decodeJwt` returns `null` (never throws) for each malformed shape: wrong segment count, bad
+  base64, non-JSON payload, and a payload missing a required claim
+- `tokenStore` degrades to `null`/no-op rather than throwing when `localStorage` itself throws
 
 *MQTT*
 - connects only when authenticated; disconnects on logout
@@ -461,9 +542,16 @@ No MSW. Two hand-rolled doubles live in `src/test/`:
 
 ### 12.2 E2E (Playwright)
 
-Runs against `vite preview`. REST is stubbed with `page.route()` fulfilments, including `Set-Cookie` headers so the cookie flow is genuinely exercised. MQTT uses the fake transport, selected by `VITE_MQTT_TRANSPORT=fake`, which exposes a `window.__mqttFake.emit(topic, payload)` test hook **only** under that flag.
+Runs against `vite preview`. REST is stubbed with `page.route()` fulfilments; a login fulfilment
+returns `{ accessToken, refreshToken }` in the JSON body (there is no `Set-Cookie` to stub
+under Bearer auth — the token pair itself is what a fixture constructs, typically the same
+hand-signed-JWT helper pattern the unit tests use). MQTT uses the fake transport, selected by
+`VITE_MQTT_TRANSPORT=fake`, which exposes a `window.__mqttFake.emit(topic, payload)` test hook
+**only** under that flag.
 
-**Specs:**
+**Specs** (the previous cookie-auth specs were deleted as part of the Bearer migration and are
+pending regeneration against the fixtures above; the list of scenarios they should cover is
+unchanged):
 
 - login succeeds and lands on the dashboard
 - login with bad credentials shows the form-level error and stays put
@@ -475,6 +563,9 @@ Runs against `vite preview`. REST is stubbed with `page.route()` fulfilments, in
 - `/devices/9999` renders the resource-not-found state inside the shell
 - logout returns to login, and browser Back does not restore the authenticated page
 - an injected fake telemetry message updates the device panel
+- (new) an access token nearing/at expiry causes a visible refresh round-trip without
+  disrupting the user's action, exercisable by pointing the spec's mock login at a very short
+  `exp`
 
 ### 12.3 CI (GitHub Actions)
 
@@ -486,36 +577,65 @@ One workflow: lint → typecheck → unit tests with coverage → build → Play
 - ESLint 9 flat config: typescript-eslint, react-hooks, jsx-a11y, import ordering, and a `no-restricted-imports` rule blocking cross-feature deep imports
 - Prettier; Husky pre-commit running lint-staged
 - Tailwind, with `modules/global/components/` primitives: Button, Input, Label, Table, Modal, Spinner, Badge
-- `.env.example`: `VITE_API_URL` (defaults to the relative `/api` so the dev proxy keeps localhost same-origin; set to an absolute URL only for a cross-domain deployment), `VITE_MQTT_URL`, `VITE_ENABLE_CSRF`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
-- Vite dev proxy `/api` → BE, making localhost same-origin so `SameSite=Lax` cookies work in development
+- `.env.example`: `VITE_API_URL` (an absolute URL — `http://localhost:8080` by default, pointing straight at `mock-api/server.mjs`; same-origin is no longer required since Bearer tokens are attached by application code, not the browser), `VITE_MQTT_URL`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
+- Vite dev proxy `/api` → BE is still available (`vite.config.ts`, defaulting its target to `http://localhost:8080`) for a deployment that prefers same-origin `/api`; it is optional under Bearer auth rather than load-bearing the way it was for `SameSite=Lax` cookies
 - `docker-compose.yml` with Mosquitto (WebSocket listener enabled) for local development
 
 ## 14. BE contract
 
-Endpoints the FE requires:
+Endpoints the FE requires. A dependency-free reference implementation ships at
+`mock-api/server.mjs` (see the root `README.md`) so this contract is directly runnable rather
+than only documented.
 
 | Method | Path | Request | Response |
 |---|---|---|---|
-| POST | `/auth/login` | `{ email, password }` | `204` **no body** + `Set-Cookie` (access, refresh) |
-| POST | `/auth/refresh` | — (reads refresh cookie) | `200` + `Set-Cookie` (new access) / `401` |
-| POST | `/auth/logout` | — | `204`, clears both cookies |
-| GET | `/auth/me` | — | `200 { user }` / `401` |
-| GET | `/devices` | — | `200 Device[]` |
-| GET | `/devices/:id` | — | `200 Device` / `404` |
-| PATCH | `/devices/:id` | partial `Device` | `200 Device` |
-| GET | `/users` | — | `200 User[]` |
+| POST | `/auth/login` | `{ email, password }` | `200 { accessToken, refreshToken }` / `401` |
+| POST | `/auth/refresh` | `{ refreshToken }` | `200 { accessToken, refreshToken }` / `401` |
+| POST | `/auth/logout` | — | `204` (best-effort; there is nothing server-side to invalidate in a stateless-JWT design unless the BE keeps a denylist) |
+| GET | `/devices` | `Authorization: Bearer <accessToken>` | `200 Device[]` / `401` |
+| GET | `/devices/:id` | `Authorization: Bearer <accessToken>` | `200 Device` / `404` / `401` |
+| PATCH | `/devices/:id` | `Authorization: Bearer <accessToken>` + partial `Device` | `200 Device` / `403` (needs `admin` or `operator`) / `401` |
+| DELETE | `/devices/:id` | `Authorization: Bearer <accessToken>` | `204` / `403` (needs `admin`) / `401` |
+| GET | `/users` | `Authorization: Bearer <accessToken>` | `200 User[]` / `403` (needs `admin`) / `401` |
 
-**Cookie flags required:** `HttpOnly; Secure; SameSite=Lax; Path=/`. `HttpOnly` is the entire point — without it there is no advantage over `localStorage`.
+There is no `GET /auth/me` — the FE derives identity and roles from the access token's own
+claims (§7.1, §3.1).
 
-**Broker requirements:** a WebSocket listener, and authentication delegated to the BE per §10.2 — either the broker's HTTP auth hook or a BE/proxy-terminated WebSocket. Topic ACLs are keyed to the authenticated session, not to any credential the FE holds. The broker endpoint must be same-site with the API so the browser attaches the session cookie to the upgrade request.
+**JWT claims required:** `sub`, `email`, `name`, `roles: string[]`, `exp` (Unix seconds), at
+minimum, on the access token. The refresh token only needs to be verifiable and to identify
+the user server-side; the FE never decodes it.
+
+**Access token TTL is a live operational knob, not just a security parameter.** Short-lived
+access tokens are what make the reactive-refresh design exercisable in manual testing — the
+mock API's `ACCESS_TTL_SECONDS` (default 900) is meant to be turned down (e.g. to `30`) so
+the refresh interceptor visibly fires.
+
+**Server-side authorization is the actual boundary, not a nicety of the mock.** §4 says the
+FE permission layer is UX; the mock API enforces the real check (role -> permission mapping
+matching `src/lib/rbac/permissions.ts` exactly) precisely so a demo of this base proves that
+boundary rather than merely asserting it in prose.
+
+**Broker requirements:** a WebSocket listener, and authentication via the access token passed
+as the MQTT password (§10.2) — either the broker's HTTP auth hook verifying the JWT, or a
+BE/proxy-terminated WebSocket that does. Topic ACLs are keyed to the verified token's claims,
+not to network position, so same-site is no longer a broker requirement the way it was for
+cookie auth.
 
 ## 15. Assumptions
 
 1. Roles are flat strings with no hierarchy or inheritance.
-2. FE and BE are same-site in production. If this changes, the BE must switch to `SameSite=None; Secure` with credentialed CORS, and `VITE_ENABLE_CSRF` must be turned on.
-3. The broker exposes MQTT over WebSocket.
-4. `POST /auth/login` returns `204` with no body. `GET /auth/me` is the only endpoint supplying user identity and roles.
-5. The broker receives the session cookie on the WebSocket upgrade and delegates authentication to the BE (§10.2). This requires the broker endpoint to be same-site with the API.
+2. The frontend accepts the XSS-exposure trade-off of `localStorage`-held Bearer tokens,
+   documented plainly in §3.1, in exchange for not needing FE/BE same-site cookie plumbing.
+   A deployment that cannot accept that trade changes only `lib/auth/tokenStore.ts`.
+3. The broker exposes MQTT over WebSocket, and its auth hook (or a terminating proxy) can
+   verify a JWT passed as the connection password.
+4. `POST /auth/login` and `POST /auth/refresh` both return a fresh `{ accessToken,
+   refreshToken }` pair as JSON. The access token's own claims are the only source of user
+   identity and roles — there is no `GET /auth/me`.
+5. CORS is the BE's responsibility whenever the FE origin differs from the API origin, since
+   Bearer requests are not simple requests and the browser will preflight mutating ones. The
+   mock API's permissive CORS for `http://localhost:5173` is a manual-testing convenience,
+   not a production CORS policy.
 
 ## 16. Demo slice
 
@@ -524,3 +644,7 @@ Three roles — `admin`, `operator`, `viewer` — exercising `/login`, `/` (dash
 The devices list carries a row-level delete button wrapped in `<Can permission="device.delete">`. This is deliberate: it is the demo's only use of **element-level** gating, as distinct from the route-level gating everywhere else, and it is what makes `DEVICE_DELETE` a used permission rather than a dead declaration. `admin` sees the button; `operator` and `viewer` do not.
 
 Deleting `src/modules/*`, the `_auth.devices.*` and `_auth.admin.*` routes, and the nav manifest entries leaves the reusable base intact.
+
+`mock-api/server.mjs` seeds exactly these three accounts (all with password `password`) and
+enforces the matching permissions server-side, so this slice is runnable end to end —
+`npm run dev:all` — rather than only described. See the root `README.md` for the walkthrough.
