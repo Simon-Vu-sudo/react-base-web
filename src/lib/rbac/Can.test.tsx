@@ -3,7 +3,7 @@ import { act, screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/render'
 import { authStore } from '@/lib/auth/store'
 import { PERMISSIONS } from './permissions'
-import { Can } from './Can.tsx'
+import { Can } from './Can'
 
 const asRole = (roles: string[]) =>
   authStore.getState().setSession({ id: 'u1', email: 'a@b.co', name: 'Ann', roles })

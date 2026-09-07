@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useAuthStore } from '@/lib/auth/store'
-import { can as canFn, canAll as canAllFn, canAny as canAnyFn } from './can'
+import { can as canFn, canAll as canAllFn, canAny as canAnyFn } from './predicates'
 import type { Permission } from './permissions'
 
 export function usePermissions() {

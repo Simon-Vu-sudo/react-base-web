@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { PERMISSIONS } from './permissions'
-import { can, canAll, canAny } from './can'
+import { can, canAll, canAny } from './predicates'
 
 const perms = new Set([PERMISSIONS.DEVICE_VIEW, PERMISSIONS.DEVICE_WRITE])
 

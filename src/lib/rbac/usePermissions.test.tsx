@@ -3,7 +3,7 @@ import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/render'
 import { authStore } from '@/lib/auth/store'
 import { PERMISSIONS } from './permissions'
-import { usePermissions } from './usePermissions.ts'
+import { usePermissions } from './usePermissions'
 
 function Probe() {
   const { can, canAll, canAny } = usePermissions()
