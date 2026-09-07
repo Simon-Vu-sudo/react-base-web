@@ -2,6 +2,8 @@ import { createRoot } from 'react-dom/client'
 import { setHttpHooks } from '@/lib/http/client'
 import { authStore } from '@/lib/auth/store'
 import { bootstrap, registerLogoutHandler, resyncSession } from '@/lib/auth/service'
+import { disconnectMqtt, setConnectFactory, startMqttLifecycle } from '@/lib/mqtt/client'
+import { env } from '@/config/env'
 import { queryClient } from '@/app/queryClient'
 import { router } from '@/app/router'
 import { AppErrorBoundary } from '@/app/AppErrorBoundary'
@@ -21,6 +23,19 @@ setHttpHooks({
 })
 
 registerLogoutHandler(() => queryClient.clear())
+
+// E2E swaps in the in-memory transport. Dynamically imported so the fake is
+// not part of the production chunk.
+if (env.MQTT_TRANSPORT === 'fake') {
+  const { fakeConnectFactory, lastFakeClient } = await import('@/test/fakeMqtt')
+  setConnectFactory(fakeConnectFactory)
+  ;(window as unknown as Record<string, unknown>).__mqttFake = {
+    emit: (topic: string, payload: unknown) => lastFakeClient()?.emitMessage(topic, payload),
+  }
+}
+
+registerLogoutHandler(() => void disconnectMqtt())
+startMqttLifecycle()
 
 // Guards only re-run on navigation, so tell the router when auth changes
 // underneath it. Logout therefore needs no explicit navigate() anywhere.
