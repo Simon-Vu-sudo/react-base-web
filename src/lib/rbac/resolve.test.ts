@@ -2,7 +2,10 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { PERMISSIONS } from './permissions'
 import { resolvePermissions } from './resolve'
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
 
 describe('resolvePermissions', () => {
   it('maps a single role to its permissions', () => {
@@ -30,5 +33,13 @@ describe('resolvePermissions', () => {
 
   it('returns an empty set for no roles', () => {
     expect(resolvePermissions([]).size).toBe(0)
+  })
+
+  it('does not warn about an unknown role outside development', () => {
+    vi.stubEnv('DEV', false)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const perms = resolvePermissions(['viewer', 'supervisor'])
+    expect(perms).toEqual(new Set([PERMISSIONS.DEVICE_VIEW]))
+    expect(warn).not.toHaveBeenCalled()
   })
 })
