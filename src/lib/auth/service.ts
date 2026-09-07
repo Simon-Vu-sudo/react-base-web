@@ -39,14 +39,14 @@ export async function bootstrap(): Promise<void> {
 }
 
 export async function login(credentials: { email: string; password: string }): Promise<void> {
-  const res = await apiFetch<MeResponse | undefined>('/auth/login', {
+  // The login response deliberately carries no user data — POST /auth/login
+  // returns 204 and only sets cookies. /auth/me is the single source of
+  // identity and roles, so there is no second code path that could disagree
+  // with it.
+  await apiFetch<void>('/auth/login', {
     method: 'POST',
     body: JSON.stringify(credentials),
   })
-  if (res?.user) {
-    authStore.getState().setSession(res.user)
-    return
-  }
   const { user } = await apiFetch<MeResponse>('/auth/me')
   authStore.getState().setSession(user)
 }

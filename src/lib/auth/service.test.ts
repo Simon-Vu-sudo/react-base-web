@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installFetchMock, mockNetworkError, mockRoute, resetFetchMock } from '@/test/http'
+import { callCount, installFetchMock, mockNetworkError, mockRoute, resetFetchMock } from '@/test/http'
 import { PERMISSIONS } from '@/lib/rbac/permissions'
 import { authStore } from './store'
 import { bootstrap, login, logout, registerLogoutHandler, resyncSession, clearLogoutHandlers } from './service'
@@ -50,18 +50,24 @@ describe('bootstrap', () => {
 })
 
 describe('login', () => {
-  it('sets the session from the login response body', async () => {
-    mockRoute('POST', '/api/auth/login', { body: { user } })
-    await login({ email: 'a@b.co', password: 'pw' })
-    expect(authStore.getState().status).toBe('authenticated')
-    expect(authStore.getState().user).toEqual(user)
-  })
-
-  it('falls back to /auth/me when login returns no body', async () => {
+  it('fetches identity from /auth/me after a successful login', async () => {
     mockRoute('POST', '/api/auth/login', { status: 204 })
     mockRoute('GET', '/api/auth/me', { body: { user } })
     await login({ email: 'a@b.co', password: 'pw' })
+    expect(authStore.getState().status).toBe('authenticated')
     expect(authStore.getState().user).toEqual(user)
+    expect(callCount('GET', '/api/auth/me')).toBe(1)
+  })
+
+  it('ignores a user payload in the login response and uses /auth/me instead', async () => {
+    // Even if a backend wrongly returns user data on login, it must not be
+    // trusted — /auth/me is the only source of identity.
+    mockRoute('POST', '/api/auth/login', { body: { user: { ...user, roles: ['admin'] } } })
+    mockRoute('GET', '/api/auth/me', { body: { user: { ...user, roles: ['viewer'] } } })
+
+    await login({ email: 'a@b.co', password: 'pw' })
+
+    expect(authStore.getState().user?.roles).toEqual(['viewer'])
   })
 
   it('propagates a 401 and leaves the store unauthenticated', async () => {
@@ -70,6 +76,7 @@ describe('login', () => {
       status: 401,
     })
     expect(authStore.getState().status).not.toBe('authenticated')
+    expect(callCount('GET', '/api/auth/me')).toBe(0)
   })
 })
 
