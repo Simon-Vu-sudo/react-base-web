@@ -30,7 +30,7 @@ The base includes one minimal but complete vertical slice (login → dashboard �
 |---|---|
 | Permission mapping | Static typed map in FE code; BE sends roles only |
 | Permission granularity | Flat permission strings, no object context |
-| Auth transport | Access + refresh tokens, both HttpOnly cookies set by BE |
+| Auth transport | **JWT** access + refresh tokens, both HttpOnly cookies set by BE |
 | Token visibility | **The FE never touches, stores, or sees a token string** — no exceptions, including for the MQTT broker |
 | User data source | **`GET /auth/me` is the only source of user identity and roles** — no other response body supplies them |
 | Session bootstrap | `GET /auth/me` before the router mounts |
@@ -48,6 +48,30 @@ The base includes one minimal but complete vertical slice (login → dashboard �
 | Denial UX | Visible `/forbidden` page (not a 404) |
 | `routeTree.gen.ts` | Committed to the repo; CI verifies it is current |
 | Language | TypeScript, strict |
+
+### 3.1 On JWTs specifically
+
+The backend authenticates with **JWTs**. They are carried in HttpOnly cookies, so the
+frontend never reads, parses, stores, or forwards them — it only sends
+`credentials: 'include'` and lets the browser attach the cookie.
+
+These two facts are not in tension, and it is worth stating plainly because the
+combination is easy to misread in both directions:
+
+- "The FE never sees a token" does **not** mean the system avoids JWTs. It means the
+  JWT is invisible to frontend code.
+- Because the token is invisible, the frontend cannot tell whether a cookie carries a
+  JWT or an opaque session id. That is a property, not a gap: the backend can change
+  its token format without a single frontend change.
+
+Practical consequences of the frontend never reading the JWT:
+
+- No `Authorization` header is ever set (there is a test asserting its absence).
+- Refresh is **reactive**, not scheduled — the frontend cannot decode an expiry, so it
+  refreshes on a `401` rather than ahead of one (§7.3).
+- Identity and roles come from `GET /auth/me`, not from decoding the token (§7.1).
+- The MQTT broker gets no credential from the frontend either; the session cookie
+  rides the WebSocket upgrade (§10.2).
 
 ## 4. Security boundary
 
