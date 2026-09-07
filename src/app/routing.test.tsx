@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { installFetchMock, mockRoute, resetFetchMock } from '@/test/http'
 import { authStore } from '@/lib/auth/store'
 import { renderRoute, signIn } from '@/test/router'
 
@@ -40,5 +42,27 @@ describe('route guards end to end', () => {
     signIn(['viewer'])
     renderRoute('/forbidden')
     expect(await screen.findByRole('heading', { name: 'Not permitted' })).toBeInTheDocument()
+  })
+})
+
+describe('login redirect bounce', () => {
+  beforeEach(() => installFetchMock())
+  afterEach(() => resetFetchMock())
+
+  // Task 17 adds the /devices/$id route and un-skips this test. Until then,
+  // /devices/42 lands on the 404 page instead of the guarded route.
+  it.skip('returns the user to the page they originally asked for', async () => {
+    mockRoute('POST', '/api/auth/login', { status: 204 })
+    mockRoute('GET', '/api/auth/me', {
+      body: { user: { id: 'u1', email: 'a@b.co', name: 'Ann', roles: ['admin'] } },
+    })
+    const { router } = renderRoute('/devices/42')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+
+    await userEvent.type(await screen.findByLabelText('Email'), 'a@b.co')
+    await userEvent.type(screen.getByLabelText('Password'), 'pw')
+    await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/devices/42'))
   })
 })

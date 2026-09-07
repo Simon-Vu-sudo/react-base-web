@@ -29,6 +29,15 @@ export default tseslint.config(
           caughtErrorsIgnorePattern: '^_',
         },
       ],
+    },
+  },
+  {
+    // Scoped to src/features/** only: features must not reach into each
+    // other's internals (spec §5, "routes/ ... imports from features"). The
+    // route tree is the intended consumer of feature internals, so it is
+    // deliberately not covered by this rule.
+    files: ['src/features/**/*.{ts,tsx}'],
+    rules: {
       'no-restricted-imports': [
         'error',
         {
