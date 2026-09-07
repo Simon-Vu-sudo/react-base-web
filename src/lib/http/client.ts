@@ -56,8 +56,8 @@ function send(path: string, init: RequestInit): Promise<Response> {
     credentials: 'include',
     headers: {
       ...(init.body ? { 'content-type': 'application/json' } : {}),
-      ...csrfHeaders(method),
       ...init.headers,
+      ...csrfHeaders(method),
     },
   })
 }
