@@ -10,7 +10,13 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 export function readXsrfToken(cookie: string = document.cookie): string | null {
   for (const part of cookie.split(';')) {
     const [name, ...rest] = part.trim().split('=')
-    if (name === COOKIE_NAME) return decodeURIComponent(rest.join('='))
+    if (name === COOKIE_NAME) {
+      try {
+        return decodeURIComponent(rest.join('='))
+      } catch {
+        return null
+      }
+    }
   }
   return null
 }

@@ -21,6 +21,11 @@ describe('readXsrfToken', () => {
   it('does not match a cookie whose name merely ends with the same text', () => {
     expect(readXsrfToken('NOT-XSRF-TOKEN=nope')).toBeNull()
   })
+
+  it('returns null for a malformed percent-sequence instead of throwing', () => {
+    expect(() => readXsrfToken('XSRF-TOKEN=%zz')).not.toThrow()
+    expect(readXsrfToken('XSRF-TOKEN=%zz')).toBeNull()
+  })
 })
 
 describe('csrfHeaders', () => {
@@ -44,5 +49,10 @@ describe('csrfHeaders', () => {
 
   it('returns nothing when enabled but the cookie is missing', () => {
     expect(csrfHeaders('POST', true)).toEqual({})
+  })
+
+  it('treats a lower-case mutating method as mutating', () => {
+    document.cookie = 'XSRF-TOKEN=abc123; path=/'
+    expect(csrfHeaders('post', true)).toEqual({ 'X-XSRF-TOKEN': 'abc123' })
   })
 })
