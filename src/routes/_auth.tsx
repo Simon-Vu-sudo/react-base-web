@@ -1,6 +1,7 @@
-import { Outlet, createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { requireAuth } from '@/lib/rbac/guards'
 import { Button } from '@/components/ui/Button'
+import { AppShell } from '@/components/AppShell'
 
 /** Tier 1: keeps the shell so the user can navigate away from a failure. */
 function ShellError({ error }: { error: unknown }) {
@@ -31,7 +32,7 @@ function ShellNotFound() {
 
 export const Route = createFileRoute('/_auth')({
   beforeLoad: requireAuth,
-  component: () => <Outlet />,
+  component: AppShell,
   errorComponent: ShellError,
   notFoundComponent: ShellNotFound,
 })

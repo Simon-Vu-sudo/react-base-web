@@ -6,24 +6,25 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
  */
 export class AppErrorBoundary extends Component<
   { children: ReactNode },
-  { error: Error | null }
+  { hasError: boolean; error: unknown }
 > {
-  state = { error: null as Error | null }
+  state: { hasError: boolean; error: unknown } = { hasError: false, error: null }
 
-  static getDerivedStateFromError(error: Error) {
-    return { error }
+  static getDerivedStateFromError(error: unknown) {
+    return { hasError: true, error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error('[app] unrecoverable error', error, info)
   }
 
   render() {
-    if (!this.state.error) return this.props.children
+    if (!this.state.hasError) return this.props.children
+    const message = this.state.error instanceof Error ? this.state.error.message : String(this.state.error)
     return (
       <main className="mx-auto max-w-md p-8 text-center">
         <h1 className="text-xl font-semibold">The application failed to start</h1>
-        <p className="mt-2 text-sm text-slate-600">{this.state.error.message}</p>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
         <button className="mt-4 text-sm underline" onClick={() => window.location.reload()}>
           Reload
         </button>
