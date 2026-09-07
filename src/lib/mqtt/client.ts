@@ -31,8 +31,12 @@ export function setConnectFactory(fn: ConnectFactory): void {
 }
 
 async function realFactory(): Promise<ConnectFactory> {
-  const mqtt = await import('mqtt')
-  return (url, opts) => mqtt.connect(url, opts) as unknown as MqttLike
+  const mod = await import('mqtt')
+  // The package's browser build (what Vite resolves in the client bundle) only
+  // ships a default export — `mod.connect` is undefined there even though it
+  // exists as a named export under Node. `mod.default.connect` works in both.
+  const connect = mod.default.connect
+  return (url, opts) => connect(url, opts) as unknown as MqttLike
 }
 
 /**
