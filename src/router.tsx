@@ -1,7 +1,7 @@
 import { createRouter } from '@tanstack/react-router'
 import { routeTree } from '@/routeTree.gen'
 import { authStore } from '@/lib/auth/store'
-import { queryClient } from './queryClient'
+import { queryClient } from '@/lib/query/client'
 
 export const router = createRouter({
   routeTree,

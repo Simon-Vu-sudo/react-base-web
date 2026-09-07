@@ -3,8 +3,8 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/lib/auth/store'
 import { bootstrap } from '@/lib/auth/service'
 import { Button } from '@/modules/global/components/Button'
-import { queryClient } from './queryClient'
-import { router } from './router'
+import { queryClient } from '@/lib/query/client'
+import { router } from '@/router'
 
 /** The third bootstrap outcome: the server could not be reached at all. */
 function ServerUnreachable() {

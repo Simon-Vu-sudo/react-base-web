@@ -90,24 +90,39 @@ Anyone can edit a JS bundle or open a WebSocket by hand. The FE layers keep user
 
 ```
 src/
-  app/                    providers, router construction, bootstrap, error boundary
+  main.tsx                composition root: hooks, providers, bootstrap, mounts <AppRoot>
+  AppRoot.tsx              <QueryClientProvider> + <RouterProvider>, renders the bootstrapError screen
+  router.tsx               createRouter() — lives at src/ root, not lib/, because it imports
+                           routeTree.gen.ts; putting it in lib/ would make the reusable core
+                           depend on this app's route tree
+  routeTree.gen.ts         generated, committed
   routes/                 TanStack Router file-based tree (thin; imports from modules)
   lib/                    cross-cutting infrastructure — the reusable core
     rbac/                 permissions.ts, resolve.ts, predicates.ts, guards.ts, <Can>, usePermissions
-    auth/                 authStore, service (bootstrap/login/logout), safeRedirect
-    http/                 apiFetch, refresh single-flight, csrf (opt-in)
+    auth/                 authStore, service (bootstrap/login/logout), tokenStore, jwt, safeRedirect
+    http/                 apiFetch, refresh single-flight (Bearer tokens)
     mqtt/                 topics, client, connectionStore, batcher, telemetryStore, useMqttSubscription
+    query/                client.ts — the shared TanStack QueryClient instance
   modules/                feature modules — each owns its api, queries, components
     global/
-      components/         shared components: Tailwind primitives + AppShell
+      components/         shared components: Tailwind primitives + AppShell + AppErrorBoundary
     auth/                 LoginForm
     devices/              api, queries, useDeviceEvents, components/
     users/                api, queries
   config/                 nav manifest, env parsing
   test/                   setup, fetch stub helper, fake mqtt client, render helpers
+mock-api/                 dependency-free Node mock API for manual auth/RBAC testing
 e2e/                      Playwright specs + fixtures
 docs/superpowers/specs/   this document
 ```
+
+There is deliberately no `src/app/` folder. `AppErrorBoundary` is a component, so it lives in
+`modules/global/components/` next to the other shared components. `queryClient` is pure
+infrastructure with no route coupling, so it lives in `lib/query/`. `router.tsx` and
+`AppRoot.tsx` are the two files that cannot move into `lib/` without breaking the "delete
+`modules/`, keep `lib/`" property, because `router.tsx` imports the app-specific
+`routeTree.gen.ts` — so they sit at `src/` root instead, as the composition root alongside
+`main.tsx`.
 
 **Import rules.** A module may import from `lib/`, `config/`, and `modules/global/`. A module must **not** reach into another module's internals — enforced by an ESLint `no-restricted-imports` pattern scoped to `src/modules/**`, with `@/modules/global/**` carved out by negation since it exists precisely to be shared. The route tree is the intended consumer of module internals and is deliberately not covered by the rule. Anything genuinely shared between modules that is not a component gets promoted into `lib/`.
 
@@ -287,7 +302,7 @@ authStore.subscribe((s, prev) => {
 
 1. `_auth` `errorComponent` — loader/render throws; keeps the shell; retry resets the boundary and re-runs the loader
 2. `__root` `errorComponent` — anything escaping above `_auth`; bare full-page error
-3. `<AppErrorBoundary>` in `app/`, **outside** `RouterProvider` — catches failures in provider or router construction, which would otherwise be a white screen because no router exists to render an error route
+3. `<AppErrorBoundary>` (`modules/global/components/`), rendered in `main.tsx` **outside** `RouterProvider` — catches failures in provider or router construction, which would otherwise be a white screen because no router exists to render an error route
 
 **Escalation rule:** route loaders `throw` (so failures become error pages), while component-level `useQuery` renders its error **inline** in the panel that failed. Otherwise one flaky widget destroys the whole page.
 
