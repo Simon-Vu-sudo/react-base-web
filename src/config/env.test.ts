@@ -7,11 +7,13 @@ describe('parseEnv', () => {
       VITE_API_URL: '/api',
       VITE_MQTT_URL: 'ws://localhost:9001/mqtt',
       VITE_MQTT_TRANSPORT: 'real',
+      VITE_API_TRANSPORT: 'real',
     })
     expect(result).toEqual({
       API_URL: '/api',
       MQTT_URL: 'ws://localhost:9001/mqtt',
       MQTT_TRANSPORT: 'real',
+      API_TRANSPORT: 'real',
     })
   })
 
@@ -24,10 +26,19 @@ describe('parseEnv', () => {
     expect(result.MQTT_TRANSPORT).toBe('fake')
   })
 
+  it('coerces an explicit API transport override', () => {
+    const result = parseEnv({
+      VITE_MQTT_URL: 'ws://x/mqtt',
+      VITE_API_TRANSPORT: 'fake',
+    })
+    expect(result.API_TRANSPORT).toBe('fake')
+  })
+
   it('defaults optional values when absent', () => {
     const result = parseEnv({ VITE_MQTT_URL: 'ws://x/mqtt' })
     expect(result.API_URL).toBe('/api')
     expect(result.MQTT_TRANSPORT).toBe('real')
+    expect(result.API_TRANSPORT).toBe('real')
   })
 
   it('throws naming the missing variable', () => {
@@ -38,5 +49,11 @@ describe('parseEnv', () => {
     expect(() =>
       parseEnv({ VITE_MQTT_URL: 'ws://x/mqtt', VITE_MQTT_TRANSPORT: 'carrier-pigeon' }),
     ).toThrow(/VITE_MQTT_TRANSPORT/)
+  })
+
+  it('rejects an unknown API transport', () => {
+    expect(() =>
+      parseEnv({ VITE_MQTT_URL: 'ws://x/mqtt', VITE_API_TRANSPORT: 'carrier-pigeon' }),
+    ).toThrow(/VITE_API_TRANSPORT/)
   })
 })
