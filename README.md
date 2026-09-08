@@ -5,52 +5,67 @@ nested type-safe routing with guards, Bearer-JWT auth with reactive refresh, and
 telemetry over WebSocket. See `docs/superpowers/specs/2026-09-07-react-base-design.md` for
 the full design.
 
-This file covers running the app locally against the bundled mock API, so you can log in as
-each demo role and see the difference with your own eyes rather than reading about it.
-
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env   # already points VITE_API_URL at the mock API below
+cp .env.example .env    # then point VITE_API_URL at your backend
+npm run dev             # Vite on http://localhost:5173
 ```
 
-Run the mock API and the Vite dev server together:
+There is **no backend in this repository.** Set `VITE_API_URL` to wherever your API runs.
+Until it answers `POST /auth/login`, you will not be able to sign in — the frontend has no
+fallback session and deliberately fabricates nothing.
 
-```bash
-npm run dev:all
+## What your backend must provide
+
+The frontend sends `Authorization: Bearer <accessToken>` on every request and never reads a
+cookie.
+
+| Method | Path | Request | Response |
+|---|---|---|---|
+| POST | `/auth/login` | `{ email, password }` | `200 { accessToken, refreshToken }` / `401` |
+| POST | `/auth/refresh` | `{ refreshToken }` | `200 { accessToken, refreshToken }` / `401` |
+| POST | `/auth/logout` | — | `204` |
+| GET | `/devices` | — | `200 Device[]` |
+| GET | `/devices/:id` | — | `200 Device` / `404` |
+| PATCH | `/devices/:id` | partial `Device` | `200 Device` |
+| DELETE | `/devices/:id` | — | `204` |
+| GET | `/users` | — | `200 User[]` |
+
+**The access token's claims are the frontend's only source of identity.** It decodes the
+payload for `sub`, `email`, `name` and `roles` — there is no `/auth/me` call. So the JWT must
+carry:
+
+```json
+{ "sub": "u1", "email": "a@b.co", "name": "Ann", "roles": ["admin"], "exp": 1893456000 }
 ```
 
-That runs `npm run dev:api` (the mock API, port 8080) and `npm run dev` (Vite, port 5173)
-concurrently, using the `concurrently` devDependency. If you would rather use two terminals:
+`roles` must contain strings matching the keys of `ROLE_PERMISSIONS` in
+`src/lib/rbac/permissions.ts` (`admin`, `operator`, `viewer` as shipped). A role the frontend
+does not recognise is ignored with a dev warning rather than crashing — the user simply gets
+no permissions from it.
 
-```bash
-# terminal 1
-npm run dev:api
+Return `401` from any protected endpoint when the token is missing, invalid or expired; that
+is what triggers the refresh interceptor. Return `403` when the token is valid but the role
+lacks permission — the frontend refetches the session on a `403`, so a mid-session role change
+corrects itself.
 
-# terminal 2
-npm run dev
-```
+## Permissions
 
-Open http://localhost:5173.
+The backend sends **roles**; the frontend maps them to permissions in
+`src/lib/rbac/permissions.ts`. To add a permission:
 
-## Test accounts
+1. Add it to `PERMISSIONS`
+2. Grant it to roles in `ROLE_PERMISSIONS`
+3. Guard the route with `requirePermission(...)`, and gate any control with `<Can>`
+4. Add a nav entry to `src/config/nav.ts` if it needs one
 
-The mock API (`mock-api/server.mjs`) seeds three accounts. Password is `password` for all of
-them:
+**The frontend permission layer is UX, not authorization.** Route guards and `<Can>` keep
+users out of dead ends and keep the UI honest. Anyone can edit a JS bundle, so your API must
+enforce the same rules — see the design spec's §4.
 
-| Email | Role | Password |
-|---|---|---|
-| `admin@example.com` | `admin` | `password` |
-| `operator@example.com` | `operator` | `password` |
-| `viewer@example.com` | `viewer` | `password` |
-
-These roles and their permissions come straight from `src/lib/rbac/permissions.ts`, and the
-mock API enforces the matching checks **server-side** — not just in the UI — so this is a
-genuine demonstration of the authorization boundary described in the design spec's §4, not
-just its cosmetic layer.
-
-## What each role should see
+As shipped, the demo expects:
 
 | | `admin` | `operator` | `viewer` |
 |---|---|---|---|
@@ -59,47 +74,80 @@ just its cosmetic layer.
 | Device row delete button | yes | no | no |
 | `/devices/:id/settings` | opens | opens | redirects to `/forbidden` |
 | `/admin/users` | opens | redirects to `/forbidden` | redirects to `/forbidden` |
-| `DELETE /devices/:id` (server) | `204` | `403` | `403` |
-| `PATCH /devices/:id` (server) | `200` | `200` | `403` |
-| `GET /users` (server) | `200` | `403` | `403` |
 
-Log out and back in as a different account to compare — the nav, the delete button, and the
-settings tab should all change with the role, and typing a forbidden URL directly should land
-on `/forbidden` with the sidebar still visible rather than a dead end.
+## How auth behaves
 
-## Observing a token refresh
+- **Page load** — `bootstrap()` reads the access token from storage and decodes it. Valid →
+  session restored with no network call. Expired → one refresh attempt. Absent or
+  undecodable → unauthenticated. This resolves *before* the router mounts, so no guard ever
+  runs against an unknown session.
+- **Any `401`** — a module-level single-flight refresh fires exactly once no matter how many
+  requests failed concurrently, then each original request replays exactly once. `/auth/*`
+  paths are exempt, or a failing refresh would recurse.
+- **Any `403`** — the session is refetched, so a role change on the backend corrects the UI
+  within one request.
+- **Logout** — clears tokens, clears the TanStack Query cache (without this, the next user on
+  the same tab would see the previous user's cached data), and closes the MQTT connection.
 
-Access tokens default to a 15-minute TTL (`ACCESS_TTL_SECONDS` on the mock API), which is too
-long to comfortably watch in a manual session. Lower it to make the refresh interceptor fire
-quickly:
+Tokens live in `localStorage`, behind `src/lib/auth/tokenStore.ts`. That is inherent to Bearer
+auth and means they are readable by any XSS on the page; keeping it behind one module means a
+project wanting memory-only access tokens changes a single file.
 
-```bash
-ACCESS_TTL_SECONDS=30 npm run dev:api
+## MQTT
+
+`VITE_MQTT_URL` must point at a broker exposing a **WebSocket** listener — MQTT.js in the
+browser cannot speak raw TCP. `docker compose up -d` starts a local Mosquitto with one
+enabled (`allow_anonymous true`, development only).
+
+The client authenticates with the JWT as the MQTT password (`username: 'jwt'`) and refreshes
+it on reconnect, so your broker must validate that token — typically via its HTTP auth hook
+(EMQX, HiveMQ) or a proxy that terminates the WebSocket. Per-topic ACLs are the real
+enforcement; the frontend's permission check only prevents accidental subscribes.
+
+Telemetry never enters the Query cache: readings are batched per animation frame into a
+Zustand store, so a device publishing at 10 Hz cannot cause 10 renders a second. Device
+*events* (registered, deleted) do invalidate Query, because those are statements about REST
+data.
+
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Vite dev server |
+| `npm test` | Unit and integration tests |
+| `npm run test:cov` | Tests with coverage thresholds on `src/lib` |
+| `npm run typecheck` | `tsc -b --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run build` | Production build |
+| `npm run e2e` | Playwright (see note below) |
+| `npm run routes:check` | Fails if the committed route tree is stale |
+
+**`npm run e2e` has no specs yet.** The original Playwright suite was written against
+cookie-based auth and was removed when the app moved to Bearer tokens; the config, CI workflow
+and Mosquitto compose file remain, so the specs can be rewritten against the current auth.
+
+## Structure
+
+```
+src/
+  lib/          reusable core — rbac, auth, http, mqtt, query
+  modules/      feature modules
+    global/components/   shared components (primitives + AppShell)
+    auth/ devices/ users/
+  routes/       TanStack Router file-based tree (thin)
+  config/       nav manifest, env parsing
+  test/         setup, fetch stub, fake MQTT client, render helpers
+  router.tsx  AppRoot.tsx  main.tsx
 ```
 
-Log in, then leave the tab open and idle for a little over 30 seconds before clicking around
-again (e.g. open the Devices list). The next request gets a `401`, the http client's
-single-flight refresh (`src/lib/http/client.ts`) fires exactly once against
-`POST /auth/refresh`, and the original request replays automatically with the new access
-token — invisibly to you as a user, but visible in the Network tab as a `401` immediately
-followed by a `POST /auth/refresh` and a retried request that succeeds. Refreshing the page
-after the access token has expired also exercises the equivalent path in `bootstrap()`
-(`src/lib/auth/service.ts`): it decodes the expired token, attempts one refresh, and either
-restores your session or sends you to `/login`.
-
-## Tests, typecheck, lint, build
+A module may import from `lib/`, `config/` and `modules/global/`, but not from another
+module's internals — enforced by ESLint. `lib/` is the part you keep; `modules/` is the demo
+you delete:
 
 ```bash
-npx vitest run
-npm run typecheck
-npm run lint
-npm run build
+rm -rf src/modules/devices src/modules/users
+rm src/routes/_auth.devices.* src/routes/_auth.admin.*
 ```
 
-## Notes on the mock API
-
-`mock-api/server.mjs` is dependency-free (`node:http` + `node:crypto` only) and hand-signs
-real HS256 JWTs — it is meant purely for local manual testing and development, not as a
-reference for production auth infrastructure (no persistence, no rate limiting, no refresh
-token revocation list, a fixed dev-only signing secret). See the design spec's §14 for the
-full endpoint contract it implements.
+Then drop those entries from `src/config/nav.ts` and the demo permissions from
+`src/lib/rbac/permissions.ts`.

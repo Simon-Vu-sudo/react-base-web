@@ -129,7 +129,6 @@ src/
     users/                api, queries
   config/                 nav manifest, env parsing
   test/                   setup, fetch stub helper, fake mqtt client, render helpers
-mock-api/                 dependency-free Node mock API for manual auth/RBAC testing
 e2e/                      Playwright specs + fixtures
 docs/superpowers/specs/   this document
 ```
@@ -564,8 +563,8 @@ unchanged):
 - logout returns to login, and browser Back does not restore the authenticated page
 - an injected fake telemetry message updates the device panel
 - (new) an access token nearing/at expiry causes a visible refresh round-trip without
-  disrupting the user's action, exercisable by pointing the spec's mock login at a very short
-  `exp`
+  disrupting the user's action, exercisable by stubbing a login response whose access token
+  carries a very short `exp`
 
 ### 12.3 CI (GitHub Actions)
 
@@ -577,15 +576,14 @@ One workflow: lint → typecheck → unit tests with coverage → build → Play
 - ESLint 9 flat config: typescript-eslint, react-hooks, jsx-a11y, import ordering, and a `no-restricted-imports` rule blocking cross-feature deep imports
 - Prettier; Husky pre-commit running lint-staged
 - Tailwind, with `modules/global/components/` primitives: Button, Input, Label, Table, Modal, Spinner, Badge
-- `.env.example`: `VITE_API_URL` (an absolute URL — `http://localhost:8080` by default, pointing straight at `mock-api/server.mjs`; same-origin is no longer required since Bearer tokens are attached by application code, not the browser), `VITE_MQTT_URL`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
+- `.env.example`: `VITE_API_URL` (an absolute URL pointing at your API; same-origin is not required, since Bearer tokens are attached by application code rather than by the browser), `VITE_MQTT_URL`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
 - Vite dev proxy `/api` → BE is still available (`vite.config.ts`, defaulting its target to `http://localhost:8080`) for a deployment that prefers same-origin `/api`; it is optional under Bearer auth rather than load-bearing the way it was for `SameSite=Lax` cookies
 - `docker-compose.yml` with Mosquitto (WebSocket listener enabled) for local development
 
 ## 14. BE contract
 
-Endpoints the FE requires. A dependency-free reference implementation ships at
-`mock-api/server.mjs` (see the root `README.md`) so this contract is directly runnable rather
-than only documented.
+Endpoints the FE requires. There is no backend in this repository — `VITE_API_URL` points at
+yours, and the root `README.md` restates this table as the integration contract.
 
 | Method | Path | Request | Response |
 |---|---|---|---|
@@ -607,13 +605,14 @@ the user server-side; the FE never decodes it.
 
 **Access token TTL is a live operational knob, not just a security parameter.** Short-lived
 access tokens are what make the reactive-refresh design exercisable in manual testing — the
-mock API's `ACCESS_TTL_SECONDS` (default 900) is meant to be turned down (e.g. to `30`) so
-the refresh interceptor visibly fires.
+reactive-refresh design exercisable at all: to watch the refresh interceptor fire during
+manual testing, have the API issue an access token whose `exp` is a few seconds out, then
+keep using the app.
 
-**Server-side authorization is the actual boundary, not a nicety of the mock.** §4 says the
-FE permission layer is UX; the mock API enforces the real check (role -> permission mapping
-matching `src/lib/rbac/permissions.ts` exactly) precisely so a demo of this base proves that
-boundary rather than merely asserting it in prose.
+**Server-side authorization is the actual boundary.** §4 says the FE permission layer is UX.
+The API must enforce the same role → permission mapping as `src/lib/rbac/permissions.ts`,
+returning `403` where a role lacks a permission — otherwise the route guards and `<Can>` are
+decoration over an open API.
 
 **Broker requirements:** a WebSocket listener, and authentication via the access token passed
 as the MQTT password (§10.2) — either the broker's HTTP auth hook verifying the JWT, or a
@@ -634,8 +633,8 @@ cookie auth.
    identity and roles — there is no `GET /auth/me`.
 5. CORS is the BE's responsibility whenever the FE origin differs from the API origin, since
    Bearer requests are not simple requests and the browser will preflight mutating ones. The
-   mock API's permissive CORS for `http://localhost:5173` is a manual-testing convenience,
-   not a production CORS policy.
+   `Authorization` header must be allowed explicitly — a wildcard `Access-Control-Allow-Headers`
+   does not cover it.
 
 ## 16. Demo slice
 
@@ -645,6 +644,5 @@ The devices list carries a row-level delete button wrapped in `<Can permission="
 
 Deleting `src/modules/*`, the `_auth.devices.*` and `_auth.admin.*` routes, and the nav manifest entries leaves the reusable base intact.
 
-`mock-api/server.mjs` seeds exactly these three accounts (all with password `password`) and
-enforces the matching permissions server-side, so this slice is runnable end to end —
-`npm run dev:all` — rather than only described. See the root `README.md` for the walkthrough.
+The slice is only exercisable against a backend implementing §14 whose users carry these three
+roles. See the root `README.md` for the JWT claim shape the frontend expects.
