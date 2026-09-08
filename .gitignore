@@ -3,6 +3,7 @@ dist
 coverage
 playwright-report
 test-results
+.features-gen
 .env
 .env.local
 *.tsbuildinfo

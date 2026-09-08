@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/routeTree.gen.ts', 'coverage', 'playwright-report'] },
+  { ignores: ['dist', 'src/routeTree.gen.ts', 'coverage', 'playwright-report', '.features-gen'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
