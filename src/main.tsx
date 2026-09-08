@@ -34,6 +34,20 @@ if (env.MQTT_TRANSPORT === 'fake') {
   }
 }
 
+// Same shape, HTTP side: no backend at all. Dynamically imported so the fake
+// is not part of the production chunk. Must run before bootstrap() below, so
+// the very first auth call is already answered in-memory.
+//
+// Gated on `import.meta.env.DEV` (a build-time constant Vite inlines as a
+// literal `false` in production), not just `env.API_TRANSPORT`, so that a
+// production build's dead-code elimination drops this whole branch — the
+// seeded emails in `src/dev/fakeApi.ts` never make it into `dist/` as a
+// chunk at all, not merely an unreached one.
+if (import.meta.env.DEV && env.API_TRANSPORT === 'fake') {
+  const { installFakeApi } = await import('@/dev/fakeApi')
+  installFakeApi()
+}
+
 registerLogoutHandler(() => void disconnectMqtt())
 startMqttLifecycle()
 
