@@ -34,7 +34,15 @@ export function AppShell() {
       <div className="flex flex-col">
         <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
           <div className="flex items-center gap-3">
-            <Badge tone={connection === 'online' ? 'ok' : connection === 'connecting' ? 'warn' : 'error'}>
+            {/* The one place in the app that earns a test id. This badge is
+                bare text with no role, label or accessible name, and it renders
+                the same words ("online") as a device row's status cell — so
+                without a handle, a test can only reach it via a raw `header`
+                tag selector and cannot tell the two apart. */}
+            <Badge
+              data-testid="connection-status"
+              tone={connection === 'online' ? 'ok' : connection === 'connecting' ? 'warn' : 'error'}
+            >
               {connection}
             </Badge>
             <span className="text-sm font-medium text-slate-700">{user?.name}</span>

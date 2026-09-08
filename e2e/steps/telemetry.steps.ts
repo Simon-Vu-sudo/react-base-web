@@ -14,7 +14,12 @@ type FakeMqttWindow = { __mqttFake?: { emit: (topic: string, payload: unknown) =
  * here instead.
  */
 async function waitForMqttOnline(page: Page): Promise<void> {
-  await expect(page.locator('header').getByText('online', { exact: true })).toBeVisible()
+  // Addressed by test id rather than `locator('header').getByText('online')`:
+  // the badge has no role or accessible name, and a device row's status cell
+  // renders the same word, so the old selector leaned on a raw tag to
+  // disambiguate. This also asserts the badge's *value*, not merely that the
+  // word appears somewhere in the header.
+  await expect(page.getByTestId('connection-status')).toHaveText('online')
 }
 
 async function emitMqtt(page: Page, topic: string, payload: unknown): Promise<void> {
@@ -44,12 +49,21 @@ Then(
   'the dashboard should show a temperature of {string} for device {string}',
   async ({ page }, reading: string, deviceName: string) => {
     const id = idForDevice(deviceName)
-    const row = page.getByRole('row', { name: id })
+    // Filtered on an exactly-matching cell rather than the row's accessible
+    // name, which substring-matches: `{ name: 'd1' }` would also match a row
+    // for `d10`.
+    const row = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('cell', { name: id, exact: true }) })
     await expect(row.getByText(reading, { exact: true })).toBeVisible()
   },
 )
 
 Then('the {string} device row should show {string}', async ({ page }, deviceName: string, status: string) => {
-  const row = page.getByRole('row', { name: deviceName })
+  // Scoped by the row's name link, not its concatenated accessible name — see
+  // the note in devices.steps.ts on why substring matching is a hazard here.
+  const row = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('link', { name: deviceName, exact: true }) })
   await expect(row.getByText(status, { exact: true })).toBeVisible()
 })

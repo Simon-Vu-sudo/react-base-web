@@ -11,7 +11,14 @@ const { Then } = createBdd()
 Then(
   /^I should (see|not see) a delete button for device "([^"]+)"$/,
   async ({ page }, visibility: string, deviceName: string) => {
-    const row = page.getByRole('row', { name: deviceName })
+    // Scoped by the row's own name *link*, not by the row's accessible name.
+    // `getByRole('row', { name })` substring-matches the row's concatenated
+    // cell text, so devices called "Boiler" and "Boiler 2" would both match
+    // "Boiler". Filtering on an exactly-named link is unambiguous and survives
+    // columns being added or reordered.
+    const row = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('link', { name: deviceName, exact: true }) })
     const deleteButton = row.getByRole('button', { name: 'Delete' })
     if (visibility === 'see') {
       await expect(deleteButton).toBeVisible()

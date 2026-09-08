@@ -207,6 +207,34 @@ A scenario blocked by real, current application behaviour (not a test mistake) i
 with a comment above it explaining why, rather than deleted or weakened to pass — see
 `e2e/features/errors.feature` for an example.
 
+### Selector policy — test ids are the exception, not the default
+
+Steps address the UI the way a user does: `getByRole`, `getByLabel`, `getByText`. That is
+deliberate. `getByLabel('Email')` asserts more than a test id would — it only passes if the
+label is genuinely wired to the input, which is an accessibility property the `Input` component
+has its own unit tests for. Likewise `getByRole('button', { name: 'Delete' })` proves the
+element really is a button and really is labelled. A test id asserts none of that, and it drifts
+from what a user perceives.
+
+There is exactly **one** `data-testid` in the app: `connection-status` on the MQTT badge in
+`AppShell`. It earns the exception because the badge is bare text with no role, label or
+accessible name, *and* it renders the same words ("online") as a device row's status cell — so
+without a handle a test can only reach it through a raw `header` tag selector, and cannot tell
+the two apart. Add a test id only when both of those are true: no accessible handle exists, and
+text alone is ambiguous.
+
+Two related traps worth knowing, since both were live in the first version of this suite:
+
+- **`getByRole('row', { name })` substring-matches** the row's concatenated cell text. Devices
+  named `Boiler` and `Boiler 2` both match `Boiler`; ids `d1` and `d10` both match `d1`. Scope
+  rows by filtering on an exactly-named child instead —
+  `getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) })`.
+- **Asserting a shared word without scoping it** passes while checking the wrong element. The
+  header badge and the device row both render "online".
+
+If you prefer a different attribute name, set `testIdAttribute` in `playwright.config.ts`'s
+`use` block rather than renaming attributes across the app.
+
 ## Structure
 
 ```

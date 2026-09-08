@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 
 type Tone = 'ok' | 'warn' | 'error' | 'neutral'
 
@@ -9,8 +9,22 @@ const TONES: Record<Tone, string> = {
   neutral: 'bg-slate-100 text-slate-700',
 }
 
-export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {
+type Props = HTMLAttributes<HTMLSpanElement> & {
+  tone?: Tone
+  children: ReactNode
+}
+
+export function Badge({ tone = 'neutral', className = '', children, ...rest }: Props) {
   return (
-    <span className={`rounded px-2 py-0.5 text-xs font-medium ${TONES[tone]}`}>{children}</span>
+    // `...rest` is spread first so a caller cannot clobber the tone classes,
+    // matching Button and Input. Pass-through attributes matter here because a
+    // Badge renders bare text with no role or accessible name of its own, so
+    // `data-testid` / `aria-*` is the only way to address a specific one.
+    <span
+      {...rest}
+      className={`rounded px-2 py-0.5 text-xs font-medium ${TONES[tone]} ${className}`}
+    >
+      {children}
+    </span>
   )
 }
