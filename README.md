@@ -167,12 +167,45 @@ data.
 | `npm run typecheck` | `tsc -b --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run build` | Production build |
-| `npm run e2e` | Playwright (see note below) |
+| `npm run e2e` | Playwright + `playwright-bdd` (see "End-to-end tests" below) |
 | `npm run routes:check` | Fails if the committed route tree is stale |
 
-**`npm run e2e` has no specs yet.** The original Playwright suite was written against
-cookie-based auth and was removed when the app moved to Bearer tokens; the config, CI workflow
-and Mosquitto compose file remain, so the specs can be rewritten against the current auth.
+## End-to-end tests
+
+E2E specs are written as [Gherkin](https://cucumber.io/docs/gherkin/) feature files via
+[`playwright-bdd`](https://github.com/vitalets/playwright-bdd), so a scenario reads as plain
+English rather than Playwright API calls:
+
+```
+e2e/
+  features/   *.feature — the scenarios, in Gherkin
+  steps/      *.steps.ts — the Given/When/Then implementations
+  support/    plain data shared between step files (seeded emails, device ids, ...)
+```
+
+`npm run e2e` is `bddgen && playwright test` — `bddgen` compiles every `e2e/features/**/*.feature`
+file into a real Playwright spec under `.features-gen/` (gitignored build output; never edit it
+by hand) using the step definitions in `e2e/steps/**/*.ts`, then `playwright test` runs those
+specs. You never run `bddgen` by hand; the `e2e` script always does it first.
+
+The suite runs against `npm run dev` (not a production build) with `VITE_API_TRANSPORT=fake` and
+`VITE_MQTT_TRANSPORT=fake` — see "Running without a backend" above. This is a deliberate
+trade-off: it means the E2E suite never clicks through the actual production bundle, but that
+bundle is still verified — CI runs `npm run build` as its own separate step — and the alternative
+(`vite build && vite preview`) ships neither the fake API nor the fake MQTT transport, which are
+gated on `import.meta.env.DEV`, so login would be impossible against a production preview server
+with no backend.
+
+To add a scenario: write it in an existing (or new) `.feature` file, then run
+`npx bddgen export` to list every step definition already available across `e2e/steps/` — genuinely
+useful for finding a step to reuse (or confirming one doesn't exist yet) before writing a new one.
+Only add a new step function when nothing already matches; prefer a `Scenario Outline` with
+`Examples` over near-duplicate scenarios when the only thing that varies is a role, a page, or a
+visibility expectation.
+
+A scenario blocked by real, current application behaviour (not a test mistake) is tagged `@skip`
+with a comment above it explaining why, rather than deleted or weakened to pass — see
+`e2e/features/errors.feature` for an example.
 
 ## Structure
 
