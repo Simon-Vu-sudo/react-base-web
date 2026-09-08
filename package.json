@@ -15,7 +15,7 @@
     "lint": "eslint .",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "e2e": "playwright test",
+    "e2e": "bddgen && playwright test",
     "e2e:ui": "playwright test --ui",
     "routes:generate": "tsr generate",
     "routes:check": "tsr generate && git diff --exit-code -- src/routeTree.gen.ts"
@@ -55,6 +55,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.12.0",
     "jsdom": "^30.0.1",
+    "playwright-bdd": "^9.2.1",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
