@@ -17,6 +17,54 @@ There is **no backend in this repository.** Set `VITE_API_URL` to wherever your 
 Until it answers `POST /auth/login`, you will not be able to sign in — the frontend has no
 fallback session and deliberately fabricates nothing.
 
+## Running without a backend
+
+To click around and exercise role-based permissions with nothing running except this frontend,
+set `VITE_API_TRANSPORT=fake` instead of pointing `VITE_API_URL` at a real API:
+
+```bash
+VITE_API_TRANSPORT=fake npm run dev
+```
+
+This is **not a server** — no process listens on a port, no `mock-api/` folder, no second
+`npm run` command. It is a dev-only module (`src/dev/fakeApi.ts`) that replaces
+`globalThis.fetch` with an in-memory handler answering from seeded data, installed by
+`src/main.tsx` only when `VITE_API_TRANSPORT=fake`, and always reached through a dynamic
+`import()` gated on `import.meta.env.DEV` — a production build's dead-code elimination drops
+the branch entirely, so none of this (seed accounts included) ever reaches `dist/`. It mirrors
+the existing `VITE_MQTT_TRANSPORT=fake` fake MQTT transport (`src/test/fakeMqtt.ts`); see §13
+of the design spec for the symmetry.
+
+Open the console once the app loads — the shim logs the three seed accounts on install. All
+three share the password `password`:
+
+| Email | Role |
+|---|---|
+| `admin@example.com` | `admin` |
+| `operator@example.com` | `operator` |
+| `viewer@example.com` | `viewer` |
+
+The shim seeds 3 devices and enforces the same server-side role checks a real backend must
+(§4: the frontend permission layer is UX, the API is the boundary) — a `viewer` calling
+`DELETE /devices/:id` by hand still gets a `403`, not a silent 200.
+
+What to expect per role (mirrors the table in "Permissions" below):
+
+| | `admin` | `operator` | `viewer` |
+|---|---|---|---|
+| **Devices** nav item | yes | yes | yes |
+| **Users** nav item | yes | no | no |
+| Device row delete button | yes | no | no |
+| `/devices/:id/settings` | opens | opens | redirects to `/forbidden` |
+| `/admin/users` | opens | redirects to `/forbidden` | redirects to `/forbidden` |
+
+**Access-token lifetime** defaults to 15 minutes and is overridable via
+`VITE_FAKE_ACCESS_TTL_SECONDS`. Set it to something small, e.g. `30`, to make the reactive
+401-refresh interceptor (`src/lib/http/client.ts`) visibly fire while you click around.
+
+Data (devices, PATCH/DELETE edits) lives only in memory for the life of the tab and resets on
+reload — there is no persistence, by design.
+
 ## What your backend must provide
 
 The frontend sends `Authorization: Bearer <accessToken>` on every request and never reads a

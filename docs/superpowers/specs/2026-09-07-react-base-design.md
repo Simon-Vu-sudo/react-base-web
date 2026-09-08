@@ -576,9 +576,10 @@ One workflow: lint → typecheck → unit tests with coverage → build → Play
 - ESLint 9 flat config: typescript-eslint, react-hooks, jsx-a11y, import ordering, and a `no-restricted-imports` rule blocking cross-feature deep imports
 - Prettier; Husky pre-commit running lint-staged
 - Tailwind, with `modules/global/components/` primitives: Button, Input, Label, Table, Modal, Spinner, Badge
-- `.env.example`: `VITE_API_URL` (an absolute URL pointing at your API; same-origin is not required, since Bearer tokens are attached by application code rather than by the browser), `VITE_MQTT_URL`, `VITE_MQTT_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
+- `.env.example`: `VITE_API_URL` (an absolute URL pointing at your API; same-origin is not required, since Bearer tokens are attached by application code rather than by the browser), `VITE_MQTT_URL`, `VITE_MQTT_TRANSPORT`, `VITE_API_TRANSPORT`. Parsed and validated once through a zod schema in `config/env.ts`, so a missing variable fails at startup with a clear message rather than as `undefined` deep inside a module.
 - Vite dev proxy `/api` → BE is still available (`vite.config.ts`, defaulting its target to `http://localhost:8080`) for a deployment that prefers same-origin `/api`; it is optional under Bearer auth rather than load-bearing the way it was for `SameSite=Lax` cookies
 - `docker-compose.yml` with Mosquitto (WebSocket listener enabled) for local development
+- `VITE_API_TRANSPORT` (`'real' | 'fake'`, default `'real'`) is deliberately symmetric with `VITE_MQTT_TRANSPORT`: `'fake'` swaps `apiFetch`'s underlying `fetch` for an in-app, in-memory transport shim (`src/dev/fakeApi.ts`), the same way `VITE_MQTT_TRANSPORT=fake` swaps in `src/test/fakeMqtt.ts` via `setConnectFactory`. Both are dynamically imported from `src/main.tsx`, and both are dev/test-only — never a standalone server or process. This is what lets the app run and exercise RBAC with no backend at all; see README "Running without a backend".
 
 ## 14. BE contract
 
