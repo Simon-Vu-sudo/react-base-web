@@ -59,6 +59,12 @@ describe('/devices/:id', () => {
     signIn(['operator'])
     renderRoute('/devices/d999')
     expect(await screen.findByRole('heading', { name: 'Not found' })).toBeInTheDocument()
+
+    // The sidebar is the whole point of "in-shell": a 403/404 must not be a
+    // dead end. Asserting only the heading is what let a real regression
+    // through — the not-found component rendered, but it had replaced
+    // AppShell, so the nav was gone. An E2E scenario caught what this missed.
+    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument()
   })
 })
 

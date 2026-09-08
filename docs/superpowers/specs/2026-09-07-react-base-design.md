@@ -341,7 +341,11 @@ authStore.subscribe((s, prev) => {
 **404, two kinds:**
 
 - Bad URL (`/dvices`) — no route matches → `__root` `notFoundComponent`, bare shell
-- Missing resource (`/devices/9999`) — the loader calls `throw notFound()` → `_auth` `notFoundComponent`, rendered **inside the layout with the sidebar intact**
+- Missing resource (`/devices/9999`) — the loader calls `throw notFound()` → the **throwing route's own** `notFoundComponent`, rendered **inside the layout with the sidebar intact**
+
+**The in-shell `notFoundComponent` must be declared on the route whose loader throws, never on `_auth`.** TanStack attributes a not-found to the nearest ancestor declaring a `notFoundComponent`, and that match renders the not-found component *instead of* its own `component`. Declared on `_auth`, it therefore replaces `AppShell` — destroying the very sidebar an in-shell not-found exists to preserve, and leaving the user on the dead end this design is trying to avoid.
+
+This was a real defect, not a hypothetical: the original implementation put it on `_auth`, and the unit test passed because it asserted only that the "Not found" heading appeared. A Gherkin E2E scenario asserting *both* the heading and the sidebar caught it. The unit test now asserts the sidebar too.
 
 **Errors, three tiers:**
 

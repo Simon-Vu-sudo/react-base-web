@@ -18,21 +18,16 @@ function ShellError({ error }: { error: unknown }) {
   )
 }
 
-/** Resource not found, inside the shell — the loader threw notFound(). */
-function ShellNotFound() {
-  return (
-    <div className="p-6">
-      <h2 className="text-lg font-semibold">Not found</h2>
-      <p className="mt-2 text-sm text-slate-600">
-        That item does not exist, or it has been removed.
-      </p>
-    </div>
-  )
-}
-
+// No `notFoundComponent` here, deliberately. A not-found is attributed to the
+// nearest ancestor declaring one, and that match renders the not-found
+// component *instead of* its own `component` — so declaring it here replaced
+// AppShell and destroyed the sidebar, which is precisely what an in-shell
+// not-found is supposed to preserve. A route whose loader can throw
+// notFound() declares its own instead (see `_auth.devices.$id.tsx`), which
+// keeps AppShell rendered and fills its outlet. Anything not claimed by a
+// specific route falls through to `__root`'s bare not-found page.
 export const Route = createFileRoute('/_auth')({
   beforeLoad: requireAuth,
   component: AppShell,
   errorComponent: ShellError,
-  notFoundComponent: ShellNotFound,
 })

@@ -14,7 +14,26 @@ export const Route = createFileRoute('/_auth/devices/$id')({
     }
   },
   component: DeviceDetailLayout,
+  // This must live HERE, on the route whose loader throws notFound(), and not
+  // on an ancestor. TanStack attributes a not-found to the nearest ancestor
+  // declaring a notFoundComponent, and that match's MatchInner renders the
+  // not-found component *instead of* its own `component`. Declared on `_auth`
+  // it therefore replaced AppShell and the sidebar vanished — the opposite of
+  // the intent. Declared here, `_auth` still renders AppShell and this fills
+  // its outlet, so the user keeps the nav and is not stranded on a dead end.
+  notFoundComponent: DeviceNotFound,
 })
+
+function DeviceNotFound() {
+  return (
+    <div className="p-6">
+      <h2 className="text-lg font-semibold">Not found</h2>
+      <p className="mt-2 text-sm text-slate-600">
+        That device does not exist, or it has been removed.
+      </p>
+    </div>
+  )
+}
 
 function DeviceDetailLayout() {
   const device = Route.useLoaderData()
